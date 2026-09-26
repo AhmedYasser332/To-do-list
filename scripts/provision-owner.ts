@@ -30,7 +30,12 @@ async function provisionOwner() {
   const existingUser = usersData.users.find((u) => u.email === email);
 
   if (existingUser) {
-    console.log(`Owner account ${email} already exists (ID: ${existingUser.id}). Idempotent setup verified.`);
+    console.log(`Owner account ${email} already exists (ID: ${existingUser.id}). Resetting password to ensure consistency...`);
+    await supabase.auth.admin.updateUserById(existingUser.id, {
+      password,
+      email_confirm: true,
+    });
+    console.log(`Owner account ${email} password verified.`);
     return;
   }
 

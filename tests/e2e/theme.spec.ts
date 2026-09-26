@@ -12,8 +12,8 @@ test.describe('Theme System & Appearance (UAT Polish)', () => {
     });
 
     await page.goto('/login');
-    await page.fill('input[type="email"]', 'owner@example.com');
-    await page.fill('input[type="password"]', 'password123');
+    await page.fill('input[type="email"]', process.env.OWNER_EMAIL || 'owner@example.com');
+    await page.fill('input[type="password"]', process.env.OWNER_PASSWORD || 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/today/);
   });
@@ -22,9 +22,9 @@ test.describe('Theme System & Appearance (UAT Polish)', () => {
     await page.goto('/settings');
     await expect(page).toHaveURL(/\/settings/);
 
-    const darkBtn = page.locator('[data-testid="theme-dark-btn"]');
-    const lightBtn = page.locator('[data-testid="theme-light-btn"]');
-    const systemBtn = page.locator('[data-testid="theme-system-btn"]');
+    const darkBtn = page.locator('[data-testid="theme-dark-btn"]').first();
+    const lightBtn = page.locator('[data-testid="theme-light-btn"]').first();
+    const systemBtn = page.locator('[data-testid="theme-system-btn"]').first();
 
     await expect(darkBtn).toBeVisible();
     await expect(lightBtn).toBeVisible();
@@ -42,7 +42,7 @@ test.describe('Theme System & Appearance (UAT Polish)', () => {
     // Reload page and verify dark mode is maintained immediately without flash
     await page.reload();
     await expect(page.locator('html')).toHaveClass(/dark/);
-    await expect(page.locator('[data-testid="theme-dark-btn"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('[data-testid="theme-dark-btn"]').first()).toHaveAttribute('aria-checked', 'true');
 
     // Verify app shell appearance in dark mode
     await page.goto('/today');
@@ -51,9 +51,9 @@ test.describe('Theme System & Appearance (UAT Polish)', () => {
 
     // 2. Select Light
     await page.goto('/settings');
-    await page.locator('[data-testid="theme-light-btn"]').click();
+    await page.locator('[data-testid="theme-light-btn"]').first().click();
     await expect(page.locator('html')).not.toHaveClass(/dark/);
-    await expect(page.locator('[data-testid="theme-light-btn"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('[data-testid="theme-light-btn"]').first()).toHaveAttribute('aria-checked', 'true');
 
     const storedLight = await page.evaluate(() => localStorage.getItem('planner-theme'));
     expect(storedLight).toBe('light');
@@ -61,11 +61,11 @@ test.describe('Theme System & Appearance (UAT Polish)', () => {
     // Reload and verify light mode is maintained
     await page.reload();
     await expect(page.locator('html')).not.toHaveClass(/dark/);
-    await expect(page.locator('[data-testid="theme-light-btn"]')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('[data-testid="theme-light-btn"]').first()).toHaveAttribute('aria-checked', 'true');
 
     // 3. Select System and verify OS preference response
-    await page.locator('[data-testid="theme-system-btn"]').click();
-    await expect(page.locator('[data-testid="theme-system-btn"]')).toHaveAttribute('aria-checked', 'true');
+    await page.locator('[data-testid="theme-system-btn"]').first().click();
+    await expect(page.locator('[data-testid="theme-system-btn"]').first()).toHaveAttribute('aria-checked', 'true');
 
     const storedSystem = await page.evaluate(() => localStorage.getItem('planner-theme'));
     expect(storedSystem).toBe('system');

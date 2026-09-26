@@ -2,8 +2,12 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
-import { wouldCreateCycle } from '@/domain/hierarchy';
+import { wouldCreateCycle, determineChildScheduling, getDescendants } from '@/domain/hierarchy';
 import type { Horizon, ItemStatus } from '@/types/domain';
+
+function revalidatePlanner() {
+  revalidatePath('/(planner)', 'layout');
+}
 
 export async function getAuthenticatedUserId(): Promise<string> {
   const supabase = await createClient();
@@ -77,11 +81,7 @@ export async function createItem(input: {
     return { error: error.message };
   }
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true, item: data };
 }
@@ -108,11 +108,7 @@ export async function toggleItemCompletion(itemId: string, currentStatus: ItemSt
     return { error: error.message };
   }
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true };
 }
@@ -139,12 +135,8 @@ export async function createChildItem(parentId: string, title: string) {
     return { error: 'Parent item not found.' };
   }
 
-  // Inherit context: Area is inherited; Day horizon/dates inherited without time
-  const areaId = parent.area_id;
-  const horizon = parent.horizon;
-  const periodStart = parent.period_start;
-  const periodEnd = parent.period_end;
-  const time = null; // Children do not force an explicit time
+  // Inherit context using domain rules: Area is inherited; ONLY Day parent gives Day horizon & date
+  const childScheduling = determineChildScheduling(parent);
 
   // Find max sort_order among siblings of this parent
   const { data: siblings } = await supabase
@@ -163,11 +155,11 @@ export async function createChildItem(parentId: string, title: string) {
       user_id: userId,
       parent_id: parentId,
       title: trimmedTitle,
-      horizon,
-      period_start: periodStart,
-      period_end: periodEnd,
-      time,
-      area_id: areaId,
+      horizon: childScheduling.horizon,
+      period_start: childScheduling.period_start,
+      period_end: childScheduling.period_end,
+      time: childScheduling.time,
+      area_id: childScheduling.area_id,
       sort_order: nextSortOrder,
       status: 'incomplete',
       weight: 1.0,
@@ -180,11 +172,7 @@ export async function createChildItem(parentId: string, title: string) {
     return { error: insertError.message };
   }
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true, item: newChild };
 }
@@ -261,11 +249,7 @@ export async function resolveParentCompletion(
     }
   }
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true };
 }
@@ -286,11 +270,7 @@ export async function reopenParent(parentId: string) {
 
   if (error) return { error: error.message };
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true };
 }
@@ -359,7 +339,7 @@ export async function createArea(name: string, icon = 'folder', colorToken: stri
   return { success: true, area: data };
 }
 
-export async function updateArea(id: string, name: string, icon = 'folder') {
+export async function updateArea(id: string, name: string, icon = 'folder', colorToken?: string | null) {
   const userId = await getAuthenticatedUserId();
   const trimmedName = name.trim();
 
@@ -369,13 +349,18 @@ export async function updateArea(id: string, name: string, icon = 'folder') {
 
   const supabase = await createClient();
 
+  const updatePayload: Record<string, any> = {
+    name: trimmedName,
+    icon,
+    updated_at: new Date().toISOString(),
+  };
+  if (colorToken !== undefined) {
+    updatePayload.color_token = colorToken;
+  }
+
   const { error } = await supabase
     .from('areas')
-    .update({
-      name: trimmedName,
-      icon,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updatePayload)
     .eq('id', id)
     .eq('user_id', userId);
 
@@ -395,6 +380,13 @@ export async function deleteArea(id: string) {
   const userId = await getAuthenticatedUserId();
   const supabase = await createClient();
 
+  // 1. Disassociate items in this Area so foreign key constraints don't block deletion
+  await supabase
+    .from('items')
+    .update({ area_id: null })
+    .eq('area_id', id)
+    .eq('user_id', userId);
+
   const { error } = await supabase
     .from('areas')
     .delete()
@@ -403,12 +395,8 @@ export async function deleteArea(id: string) {
 
   if (error) return { error: error.message };
 
+  revalidatePlanner();
   revalidatePath('/settings');
-  revalidatePath('/today');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
-  revalidatePath('/inbox');
 
   return { success: true };
 }
@@ -456,19 +444,21 @@ export async function updateItemDetails(
   }
 
   // 2. Completion Backdoor Prevention:
-  // Marking a parent with incomplete children directly complete must route through the 3-option completion dialog
+  // Marking a parent with incomplete descendants directly complete must route through the 3-option completion dialog
   if (updates.status === 'complete' && currentItem.status !== 'complete') {
-    const { data: children } = await supabase
+    const { data: allUserItems } = await supabase
       .from('items')
-      .select('status')
-      .eq('parent_id', itemId)
+      .select('id, parent_id, status')
       .eq('user_id', userId);
 
-    const hasIncompleteChildren = children && children.some((c) => c.status === 'incomplete');
-    if (hasIncompleteChildren) {
-      return {
-        error: 'Cannot mark parent complete directly while subtasks remain incomplete. Please use the completion prompt.',
-      };
+    if (allUserItems) {
+      const descendants = getDescendants(allUserItems as any, itemId);
+      const hasIncompleteDescendants = descendants.some((d) => d.status === 'incomplete');
+      if (hasIncompleteDescendants) {
+        return {
+          error: 'Cannot mark parent complete directly while subtasks remain incomplete. Please use the completion prompt.',
+        };
+      }
     }
   }
 
@@ -497,7 +487,7 @@ export async function updateItemDetails(
     patch.status = updates.status;
     if (updates.status === 'complete') {
       patch.completed_at = new Date().toISOString();
-    } else if (updates.status === 'incomplete') {
+    } else if (updates.status === 'incomplete' || updates.status === 'cancelled') {
       patch.completed_at = null;
       patch.is_manually_completed = false;
     }
@@ -511,11 +501,7 @@ export async function updateItemDetails(
 
   if (updateError) return { error: updateError.message };
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true };
 }
@@ -532,11 +518,7 @@ export async function reorderItems(reorderedItems: { id: string; sort_order: num
       .eq('user_id', userId);
   }
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true };
 }
@@ -554,11 +536,7 @@ export async function deleteItemSubtree(itemId: string) {
 
   if (error) return { error: error.message };
 
-  revalidatePath('/today');
-  revalidatePath('/inbox');
-  revalidatePath('/week');
-  revalidatePath('/month');
-  revalidatePath('/year');
+  revalidatePlanner();
 
   return { success: true };
 }

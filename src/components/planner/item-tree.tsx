@@ -23,13 +23,19 @@ import { ItemRow } from '@/components/planner/item-row';
 import { CompletionDialog } from '@/components/planner/completion-dialog';
 import { ItemDetail } from '@/components/planner/item-detail';
 import { createChildItem, resolveParentCompletion, reorderItems } from '@/app/(planner)/actions';
-import { reorderSiblingList } from '@/domain/reorder';
+import {
+  reorderSiblingList,
+  findNodeAndSiblings,
+  updateTreeWithReorderedSiblings,
+} from '@/domain/reorder';
 import { Plus, GripVertical } from 'lucide-react';
-import type { ItemNode, AreaRow, ItemRow as ItemRowType } from '@/types/domain';
+import type { ItemNode, AreaRow, ItemRow as ItemRowType, WeekDay } from '@/types/domain';
 
 interface ItemTreeProps {
   nodes: ItemNode[];
+  allItems?: ItemRowType[];
   areas?: AreaRow[];
+  firstDayOfWeek?: WeekDay;
   onItemClick?: (item: ItemRowType) => void;
   onParentCompleteRequest?: (parent: ItemNode) => void;
 }
@@ -58,13 +64,14 @@ function SortableRowWrapper({ id, children }: SortableRowWrapperProps) {
 
   return (
     <div ref={setNodeRef} style={style} className="relative flex items-center group">
-      {/* Subtle drag handle visible on hover / touch */}
+      {/* Drag handle visible on touch/hover/focus */}
       <button
         type="button"
         {...attributes}
         {...listeners}
         data-testid="drag-handle"
-        className="opacity-0 group-hover:opacity-60 focus:opacity-100 p-0.5 text-mutedText-light hover:text-primaryText-light dark:text-mutedText-dark dark:hover:text-primaryText-dark cursor-grab active:cursor-grabbing transition-opacity shrink-0"
+        aria-label="Drag to reorder"
+        className="opacity-70 md:opacity-0 md:group-hover:opacity-60 md:focus:opacity-100 p-0.5 text-mutedText-light hover:text-primaryText-light dark:text-mutedText-dark dark:hover:text-primaryText-dark cursor-grab active:cursor-grabbing transition-opacity shrink-0"
         title="Drag to reorder"
       >
         <GripVertical className="h-3.5 w-3.5" />
@@ -78,7 +85,9 @@ function SortableRowWrapper({ id, children }: SortableRowWrapperProps) {
 
 export function ItemTree({
   nodes,
+  allItems = [],
   areas = [],
+  firstDayOfWeek = 'monday',
   onItemClick,
   onParentCompleteRequest,
 }: ItemTreeProps) {
@@ -170,21 +179,36 @@ export function ItemTree({
     });
   };
 
+  // Same-parent nested sibling reordering (T080)
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const oldIndex = items.findIndex((i) => i.id === active.id);
-    const newIndex = items.findIndex((i) => i.id === over.id);
+    const activeInfo = findNodeAndSiblings(items, String(active.id));
+    const overInfo = findNodeAndSiblings(items, String(over.id));
 
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const reordered = reorderSiblingList(items, oldIndex, newIndex);
-      setItems(reordered);
+    if (!activeInfo || !overInfo) return;
 
-      // Persist new sort_order integers via Server Action
+    // Prohibit cross-parent dragging
+    if (activeInfo.parentNode?.id !== overInfo.parentNode?.id) return;
+
+    const siblings = activeInfo.siblings;
+    const oldIndex = siblings.findIndex((i) => i.id === active.id);
+    const newIndex = siblings.findIndex((i) => i.id === over.id);
+
+    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      const reorderedSiblings = reorderSiblingList(siblings, oldIndex, newIndex);
+      const updatedTree = updateTreeWithReorderedSiblings(
+        items,
+        activeInfo.parentNode?.id || null,
+        reorderedSiblings
+      );
+      setItems(updatedTree);
+
+      // Persist sequential sort_orders via server action
       startTransition(async () => {
         await reorderItems(
-          reordered.map((item) => ({
+          reorderedSiblings.map((item) => ({
             id: item.id,
             sort_order: item.sort_order,
           }))
@@ -261,15 +285,44 @@ export function ItemTree({
             </form>
           )}
 
-          {isExpanded && node.children && node.children.length > 0 && (
-            <div>{renderNodes(node.children, indent + 1)}</div>
+          {isExpanded && (
+            <div>
+              {node.children && node.children.length > 0 && (
+                <SortableContext
+                  items={node.children.map((c) => c.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {renderNodes(node.children, indent + 1)}
+                </SortableContext>
+              )}
+              {/* Touch-discoverable Add Subtask button when expanded (T072) */}
+              {!isAddingChild && !isContextRow && (
+                <div
+                  style={{ paddingLeft: `${(indent + 1) * 20 + 24}px` }}
+                  className="py-1 border-b border-border-light/20 last:border-b-0 dark:border-border-dark/20"
+                >
+                  <button
+                    type="button"
+                    data-testid="expanded-add-subtask-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStartAddChild(node);
+                    }}
+                    className="flex items-center gap-1.5 text-[11px] text-mutedText-light hover:text-accent dark:text-mutedText-dark dark:hover:text-accent transition-colors cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Add subtask</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </React.Fragment>
       );
     });
   };
 
-  // Extract flat list of all nodes for candidate parent lookup in detail drawer
+  // Flatten tree for candidate parent lookup if allItems not explicitly provided
   const flattenNodes = (tree: ItemNode[]): ItemRowType[] => {
     const flat: ItemRowType[] = [];
     const traverse = (arr: ItemNode[]) => {
@@ -281,6 +334,8 @@ export function ItemTree({
     traverse(nodes);
     return flat;
   };
+
+  const candidateItems = allItems && allItems.length > 0 ? allItems : flattenNodes(nodes);
 
   return (
     <>
@@ -310,8 +365,9 @@ export function ItemTree({
       {/* Item Detail Drawer / Sheet */}
       <ItemDetail
         item={selectedItemForDetail}
-        allItems={flattenNodes(nodes)}
+        allItems={candidateItems}
         areas={areas}
+        firstDayOfWeek={firstDayOfWeek}
         open={Boolean(selectedItemForDetail)}
         onOpenChange={(open) => !open && setSelectedItemForDetail(null)}
       />

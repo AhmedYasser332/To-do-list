@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Item Details, Reordering & Error States (US8)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.fill('input[type="email"]', 'owner@example.com');
-    await page.fill('input[type="password"]', 'password123');
+    await page.fill('input[type="email"]', process.env.OWNER_EMAIL || 'owner@example.com');
+    await page.fill('input[type="password"]', process.env.OWNER_PASSWORD || 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/today/);
   });
@@ -16,6 +16,7 @@ test.describe('Item Details, Reordering & Error States (US8)', () => {
 
     // Click item row to open drawer
     const row = page.locator(`[data-testid="item-row"]:has-text("${title}")`);
+    await expect(row).toBeVisible();
     await row.click();
 
     // Verify detail drawer opens
@@ -46,8 +47,9 @@ test.describe('Item Details, Reordering & Error States (US8)', () => {
     await page.locator('[data-testid="quick-add-title"]').press('Enter');
 
     const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
+    await expect(parentRow).toBeVisible();
     await parentRow.hover();
-    await parentRow.locator('button[title="Add Subtask"]').click();
+    await parentRow.locator('[data-testid="add-subtask-btn"]').click();
     await page.fill('[data-testid="inline-child-input"]', 'Subtask To Delete');
     await page.locator('[data-testid="inline-child-input"]').press('Enter');
     await expect(page.locator('[data-testid="item-row"]:has-text("Subtask To Delete")')).toBeVisible();
@@ -80,19 +82,84 @@ test.describe('Item Details, Reordering & Error States (US8)', () => {
     await expect(page.locator(`[data-testid="item-row"]:has-text("${taskB}")`)).toBeVisible();
 
     const rowA = page.locator(`[data-testid="item-row"]:has-text("${taskA}")`);
-    const dragHandleA = rowA.locator('..').locator('[data-testid="drag-handle"]');
+    const dragHandleA = page
+      .locator('.group')
+      .filter({ has: page.locator(`[data-testid="item-row"]:has-text("${taskA}")`) })
+      .locator('[data-testid="drag-handle"]');
 
-    if (await dragHandleA.isVisible()) {
-      // Focus handle and initiate keyboard drag via Space
-      await dragHandleA.focus();
-      await page.keyboard.press('Space');
-      await page.keyboard.press('ArrowDown');
-      await page.keyboard.press('Space');
+    await expect(dragHandleA).toBeAttached();
+    await dragHandleA.focus();
+    await page.keyboard.press('Space');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Space');
 
-      // Reload page to verify order persistence
-      await page.reload();
-      await expect(page.locator(`[data-testid="item-row"]:has-text("${taskA}")`)).toBeVisible();
-      await expect(page.locator(`[data-testid="item-row"]:has-text("${taskB}")`)).toBeVisible();
-    }
+    // Reload page to verify order persistence
+    await page.reload();
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${taskA}")`)).toBeVisible();
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${taskB}")`)).toBeVisible();
+  });
+
+  test('preserves existing Week scheduling without corruption when saving details (T068)', async ({ page }) => {
+    await page.goto('/week');
+    await expect(page).toHaveURL(/\/week/);
+
+    const weekItemTitle = `Week Goal ${Date.now()}`;
+    await page.fill('[data-testid="quick-add-title"]', weekItemTitle);
+    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+
+    const weekRow = page.locator(`[data-testid="item-row"]:has-text("${weekItemTitle}")`);
+    await expect(weekRow).toBeVisible();
+
+    // Open detail drawer
+    await weekRow.click();
+    const drawer = page.locator('[data-testid="item-detail-drawer"]');
+    await expect(drawer).toBeVisible();
+
+    // Edit non-scheduling fields
+    await page.fill('[data-testid="detail-description"]', 'Week goal description notes');
+    await page.fill('[data-testid="detail-weight"]', '2');
+    await page.click('[data-testid="detail-save-btn"]');
+    await page.click('[data-testid="detail-close-btn"]');
+
+    // Reload /week and verify item remains visible (periodEnd was NOT collapsed to periodStart)
+    await page.reload();
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${weekItemTitle}")`)).toBeVisible();
+  });
+
+  test('calculates recursive descendant count when confirming subtree deletion (T081)', async ({ page }) => {
+    const parentTitle = `Recursive Parent ${Date.now()}`;
+    await page.fill('[data-testid="quick-add-title"]', parentTitle);
+    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+
+    const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
+    await expect(parentRow).toBeVisible();
+
+    // Add direct child via row button
+    await parentRow.locator('[data-testid="add-subtask-btn"]').click();
+    await page.fill('[data-testid="inline-child-input"]', 'Direct Child');
+    await page.locator('[data-testid="inline-child-input"]').press('Enter');
+    const childRow = page.locator('[data-testid="item-row"]:has-text("Direct Child")');
+    await expect(childRow).toBeVisible();
+
+    // Add grandchild via Item Detail subtask action (T072)
+    await childRow.click();
+    const drawer = page.locator('[data-testid="item-detail-drawer"]');
+    await expect(drawer).toBeVisible();
+    await page.click('[data-testid="detail-add-subtask-btn"]');
+    await page.fill('[data-testid="detail-subtask-input"]', 'Deep Grandchild');
+    await page.click('[data-testid="detail-save-subtask-btn"]');
+    await page.click('[data-testid="detail-close-btn"]');
+
+    // Open Parent detail drawer and trigger delete
+    await parentRow.click();
+    await page.click('[data-testid="detail-delete-btn"]');
+
+    // Confirmation dialog must report recursive count: 2 subtasks (child + grandchild)
+    const confirmDialog = page.locator('[data-testid="delete-confirm-dialog"]');
+    await expect(confirmDialog).toBeVisible();
+    await expect(confirmDialog).toContainText('2 subtasks');
+
+    await page.click('[data-testid="confirm-delete-btn"]');
+    await expect(parentRow).not.toBeVisible();
   });
 });

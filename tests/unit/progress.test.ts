@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { calculateItemProgress, computeTreeProgress } from '@/domain/progress';
+import {
+  calculateItemProgress,
+  computeTreeProgress,
+  calculateSiblingContribution,
+} from '@/domain/progress';
 import type { ItemRow, ItemNode } from '@/types/domain';
 
 function createMockItem(partial: Partial<ItemRow> & { id: string }): ItemRow {
@@ -142,6 +146,63 @@ describe('Progress Calculation Domain Logic (TDD)', () => {
 
       // Grandparent: (50 * 1 + 0 * 1) / 2 = 25%
       expect(progressMap.get('gp')).toBe(25);
+    });
+
+    it('calculates progress across different horizons (Year -> Month -> Week -> Day)', () => {
+      const yearGoal = createMockItem({ id: 'year-1', horizon: 'year', period_start: '2026-01-01', period_end: '2026-12-31' });
+      const monthGoal = createMockItem({ id: 'month-1', parent_id: 'year-1', horizon: 'month', period_start: '2026-09-01', period_end: '2026-09-30' });
+      const weekGoal = createMockItem({ id: 'week-1', parent_id: 'month-1', horizon: 'week', period_start: '2026-09-21', period_end: '2026-09-27' });
+      const day1 = createMockItem({ id: 'day-1', parent_id: 'week-1', horizon: 'day', period_start: '2026-09-26', status: 'complete' });
+      const day2 = createMockItem({ id: 'day-2', parent_id: 'week-1', horizon: 'day', period_start: '2026-09-27', status: 'incomplete' });
+
+      const items = [yearGoal, monthGoal, weekGoal, day1, day2];
+      const progressMap = computeTreeProgress(items);
+
+      expect(progressMap.get('day-1')).toBe(100);
+      expect(progressMap.get('day-2')).toBe(0);
+      expect(progressMap.get('week-1')).toBe(50);
+      expect(progressMap.get('month-1')).toBe(50);
+      expect(progressMap.get('year-1')).toBe(50);
+    });
+  });
+
+  describe('calculateSiblingContribution (Progress Weight UX)', () => {
+    it('returns null for root items without a parent', () => {
+      const root = createMockItem({ id: 'root-1', parent_id: null });
+      expect(calculateSiblingContribution('root-1', [root])).toBeNull();
+    });
+
+    it('calculates relative percentage contribution among active siblings (weights 1, 1, 4)', () => {
+      const parent = createMockItem({ id: 'p' });
+      const sibA = createMockItem({ id: 'a', parent_id: 'p', weight: 1 });
+      const sibB = createMockItem({ id: 'b', parent_id: 'p', weight: 1 });
+      const sibC = createMockItem({ id: 'c', parent_id: 'p', weight: 4 });
+      const items = [parent, sibA, sibB, sibC];
+
+      expect(calculateSiblingContribution('a', items)).toBe(16.7);
+      expect(calculateSiblingContribution('b', items)).toBe(16.7);
+      expect(calculateSiblingContribution('c', items)).toBe(66.7);
+    });
+
+    it('excludes cancelled siblings from contribution calculation', () => {
+      const parent = createMockItem({ id: 'p' });
+      const sibA = createMockItem({ id: 'a', parent_id: 'p', weight: 1 });
+      const sibB = createMockItem({ id: 'b', parent_id: 'p', weight: 1 });
+      const sibC = createMockItem({ id: 'c', parent_id: 'p', weight: 2, status: 'cancelled' });
+      const items = [parent, sibA, sibB, sibC];
+
+      expect(calculateSiblingContribution('a', items)).toBe(50);
+      expect(calculateSiblingContribution('b', items)).toBe(50);
+    });
+
+    it('allows previewing contribution with a candidate targetWeight', () => {
+      const parent = createMockItem({ id: 'p' });
+      const sibA = createMockItem({ id: 'a', parent_id: 'p', weight: 1 });
+      const sibB = createMockItem({ id: 'b', parent_id: 'p', weight: 1 });
+      const items = [parent, sibA, sibB];
+
+      // If weight of 'a' changes from 1 to 3, total becomes 4, so contribution is 75%
+      expect(calculateSiblingContribution('a', items, 3)).toBe(75);
     });
   });
 });

@@ -19,14 +19,28 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { updateItemDetails, deleteItemSubtree } from '@/app/(planner)/actions';
-import { Trash2, AlertCircle, Ban, RotateCcw } from 'lucide-react';
-import type { ItemRow, AreaRow, Horizon, ItemStatus } from '@/types/domain';
+import {
+  updateItemDetails,
+  deleteItemSubtree,
+  createChildItem,
+} from '@/app/(planner)/actions';
+import {
+  resolveItemScheduling,
+  getWeekBoundaries,
+  getMonthBoundaries,
+  getYearBoundaries,
+} from '@/domain/calendar';
+import { wouldCreateCycle, getDescendants } from '@/domain/hierarchy';
+import { calculateSiblingContribution } from '@/domain/progress';
+import { Trash2, AlertCircle, Ban, RotateCcw, Plus, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { ItemRow, AreaRow, Horizon, ItemStatus, WeekDay } from '@/types/domain';
 
 interface ItemDetailProps {
   item: ItemRow | null;
   allItems?: ItemRow[];
   areas?: AreaRow[];
+  firstDayOfWeek?: WeekDay;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onItemUpdated?: () => void;
@@ -37,6 +51,7 @@ export function ItemDetail({
   item,
   allItems = [],
   areas = [],
+  firstDayOfWeek = 'monday',
   open,
   onOpenChange,
   onItemUpdated,
@@ -46,11 +61,15 @@ export function ItemDetail({
   const [description, setDescription] = useState('');
   const [horizon, setHorizon] = useState<Horizon>('inbox');
   const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
   const [time, setTime] = useState('');
   const [areaId, setAreaId] = useState<string>('');
   const [weight, setWeight] = useState('1');
   const [parentId, setParentId] = useState<string>('');
   const [status, setStatus] = useState<ItemStatus>('incomplete');
+
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [showAddSubtask, setShowAddSubtask] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -62,20 +81,47 @@ export function ItemDetail({
       setDescription(item.description || '');
       setHorizon(item.horizon);
       setPeriodStart(item.period_start || '');
+      setPeriodEnd(item.period_end || '');
       setTime(item.time || '');
       setAreaId(item.area_id || '');
       setWeight(String(item.weight || 1));
       setParentId(item.parent_id || '');
       setStatus(item.status);
       setError(null);
+      setNewSubtaskTitle('');
+      setShowAddSubtask(false);
     }
   }, [item]);
 
   if (!item) return null;
 
-  // Calculate direct and indirect descendant count for deletion prompt
+  // Calculate recursive descendant count for deletion prompt (T081)
+  const descendants = getDescendants(allItems, item.id);
+  const descendantCount = descendants.length;
+
+  // Direct children for display in subtask list
   const directChildren = allItems.filter((i) => i.parent_id === item.id);
-  const childCount = directChildren.length;
+
+  // Sibling contribution percentage (T076)
+  const effectiveWeight = parseFloat(weight) || 1;
+  const siblingContribution = calculateSiblingContribution(item.id, allItems, effectiveWeight);
+
+  const handleHorizonChange = (newHorizon: Horizon) => {
+    setHorizon(newHorizon);
+    const resolved = resolveItemScheduling({
+      currentHorizon: item.horizon,
+      currentPeriodStart: item.period_start,
+      currentPeriodEnd: item.period_end,
+      currentTime: item.time,
+      targetHorizon: newHorizon,
+      targetDate: periodStart || undefined,
+      targetTime: time || undefined,
+      firstDayOfWeek,
+    });
+    setPeriodStart(resolved.periodStart || '');
+    setPeriodEnd(resolved.periodEnd || '');
+    setTime(resolved.time || '');
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,15 +129,27 @@ export function ItemDetail({
 
     setError(null);
     startTransition(async () => {
+      // Resolve scheduling to guarantee no corruption of calendar boundaries (T068)
+      const scheduling = resolveItemScheduling({
+        currentHorizon: item.horizon,
+        currentPeriodStart: item.period_start,
+        currentPeriodEnd: item.period_end,
+        currentTime: item.time,
+        targetHorizon: horizon,
+        targetDate: periodStart || null,
+        targetTime: time || null,
+        firstDayOfWeek,
+      });
+
       const res = await updateItemDetails(item.id, {
         title: title.trim(),
         description: description.trim() || null,
         horizon,
-        periodStart: horizon === 'inbox' ? null : periodStart || null,
-        periodEnd: horizon === 'inbox' ? null : periodStart || null,
-        time: horizon === 'day' && time ? time : null,
+        periodStart: scheduling.periodStart,
+        periodEnd: scheduling.periodEnd,
+        time: scheduling.time,
         areaId: areaId || null,
-        weight: parseFloat(weight) || 1,
+        weight: effectiveWeight,
         parentId: parentId || null,
         status,
       });
@@ -99,6 +157,22 @@ export function ItemDetail({
       if (res?.error) {
         setError(res.error);
       } else {
+        onItemUpdated?.();
+      }
+    });
+  };
+
+  const handleAddSubtask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubtaskTitle.trim() || isPending) return;
+
+    startTransition(async () => {
+      const res = await createChildItem(item.id, newSubtaskTitle.trim());
+      if (res?.error) {
+        setError(res.error);
+      } else {
+        setNewSubtaskTitle('');
+        setShowAddSubtask(false);
         onItemUpdated?.();
       }
     });
@@ -144,8 +218,10 @@ export function ItemDetail({
     });
   };
 
-  // Candidate parents: exclude self
-  const candidateParents = allItems.filter((i) => i.id !== item.id);
+  // Candidate parents from full collection with cycle prevention (T079)
+  const candidateParents = allItems.filter(
+    (cp) => cp.id !== item.id && !wouldCreateCycle(allItems, item.id, cp.id)
+  );
 
   return (
     <>
@@ -203,7 +279,7 @@ export function ItemDetail({
               />
             </div>
 
-            {/* Horizon & Period */}
+            {/* Horizon & Area */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-primaryText-light dark:text-primaryText-dark mb-1">
@@ -211,7 +287,7 @@ export function ItemDetail({
                 </label>
                 <select
                   value={horizon}
-                  onChange={(e) => setHorizon(e.target.value as Horizon)}
+                  onChange={(e) => handleHorizonChange(e.target.value as Horizon)}
                   disabled={isPending}
                   className="w-full rounded border border-border-light bg-surface-light px-2.5 py-1.5 text-xs text-primaryText-light dark:border-border-dark dark:bg-surface-dark dark:text-primaryText-dark focus:outline-none"
                 >
@@ -243,7 +319,13 @@ export function ItemDetail({
               </div>
             </div>
 
-            {/* Date & Time (for Day horizon) */}
+            {/* Scheduling Details per Horizon (T068) */}
+            {horizon === 'inbox' && (
+              <p className="text-[11px] text-mutedText-light dark:text-mutedText-dark italic">
+                Inbox items are unscheduled quick-capture thoughts.
+              </p>
+            )}
+
             {horizon === 'day' && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -253,7 +335,10 @@ export function ItemDetail({
                   <Input
                     type="date"
                     value={periodStart}
-                    onChange={(e) => setPeriodStart(e.target.value)}
+                    onChange={(e) => {
+                      setPeriodStart(e.target.value);
+                      setPeriodEnd(e.target.value);
+                    }}
                     disabled={isPending}
                     className="text-xs"
                   />
@@ -273,7 +358,81 @@ export function ItemDetail({
               </div>
             )}
 
-            {/* Parent & Weight */}
+            {horizon === 'week' && (
+              <div>
+                <label className="block text-xs font-medium text-primaryText-light dark:text-primaryText-dark mb-1">
+                  Week Date
+                </label>
+                <Input
+                  type="date"
+                  value={periodStart}
+                  onChange={(e) => {
+                    const { start, end } = getWeekBoundaries(e.target.value, firstDayOfWeek);
+                    setPeriodStart(start);
+                    setPeriodEnd(end);
+                  }}
+                  disabled={isPending}
+                  className="text-xs"
+                />
+                <p className="text-[11px] text-mutedText-light dark:text-mutedText-dark mt-1">
+                  Calendar week: <span className="font-medium text-primaryText-light dark:text-primaryText-dark">{periodStart} &ndash; {periodEnd}</span>
+                </p>
+              </div>
+            )}
+
+            {horizon === 'month' && (
+              <div>
+                <label className="block text-xs font-medium text-primaryText-light dark:text-primaryText-dark mb-1">
+                  Month
+                </label>
+                <Input
+                  type="month"
+                  value={periodStart ? periodStart.slice(0, 7) : ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const [y, m] = e.target.value.split('-').map(Number);
+                      const { start, end } = getMonthBoundaries(y, m);
+                      setPeriodStart(start);
+                      setPeriodEnd(end);
+                    }
+                  }}
+                  disabled={isPending}
+                  className="text-xs"
+                />
+                <p className="text-[11px] text-mutedText-light dark:text-mutedText-dark mt-1">
+                  Calendar month: <span className="font-medium text-primaryText-light dark:text-primaryText-dark">{periodStart} &ndash; {periodEnd}</span>
+                </p>
+              </div>
+            )}
+
+            {horizon === 'year' && (
+              <div>
+                <label className="block text-xs font-medium text-primaryText-light dark:text-primaryText-dark mb-1">
+                  Year
+                </label>
+                <Input
+                  type="number"
+                  min="2000"
+                  max="2100"
+                  value={periodStart ? periodStart.slice(0, 4) : ''}
+                  onChange={(e) => {
+                    const y = parseInt(e.target.value, 10);
+                    if (y) {
+                      const { start, end } = getYearBoundaries(y);
+                      setPeriodStart(start);
+                      setPeriodEnd(end);
+                    }
+                  }}
+                  disabled={isPending}
+                  className="text-xs"
+                />
+                <p className="text-[11px] text-mutedText-light dark:text-mutedText-dark mt-1">
+                  Calendar year: <span className="font-medium text-primaryText-light dark:text-primaryText-dark">{periodStart} &ndash; {periodEnd}</span>
+                </p>
+              </div>
+            )}
+
+            {/* Parent & Progress Weight (T076, T079) */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-primaryText-light dark:text-primaryText-dark mb-1">
@@ -296,7 +455,7 @@ export function ItemDetail({
 
               <div>
                 <label className="block text-xs font-medium text-primaryText-light dark:text-primaryText-dark mb-1">
-                  Relative Weight
+                  Progress weight
                 </label>
                 <Input
                   data-testid="detail-weight"
@@ -309,6 +468,105 @@ export function ItemDetail({
                   className="text-xs"
                 />
               </div>
+            </div>
+
+            {/* Weight helper text & sibling contribution percentage (T076) */}
+            <div className="text-[11px] text-mutedText-light dark:text-mutedText-dark -mt-2">
+              {parentId ? (
+                <span>
+                  Relative share of parent progress compared to siblings
+                  {siblingContribution !== null && (
+                    <span className="font-medium text-primaryText-light dark:text-primaryText-dark ml-1">
+                      (~{siblingContribution}% of parent)
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="italic opacity-80">
+                  Root item &ndash; has no parent progress contribution.
+                </span>
+              )}
+            </div>
+
+            {/* Subtasks Section with Discoverable Action (T072) */}
+            <div className="pt-3 border-t border-border-light dark:border-border-dark space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-primaryText-light dark:text-primaryText-dark">
+                  Subtasks ({directChildren.length})
+                </span>
+                {!showAddSubtask && (
+                  <button
+                    type="button"
+                    data-testid="detail-add-subtask-btn"
+                    onClick={() => setShowAddSubtask(true)}
+                    className="flex items-center gap-1 text-[11px] text-accent hover:underline cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add subtask</span>
+                  </button>
+                )}
+              </div>
+
+              {directChildren.length > 0 && (
+                <div className="space-y-1 max-h-36 overflow-y-auto rounded border border-border-light/40 dark:border-border-dark/40 p-2 bg-surface-light dark:bg-surface-dark">
+                  {directChildren.map((child) => (
+                    <div
+                      key={child.id}
+                      className="text-xs flex items-center justify-between text-primaryText-light dark:text-primaryText-dark py-0.5"
+                    >
+                      <span className={cn('truncate', child.status === 'complete' && 'line-through text-mutedText-light dark:text-mutedText-dark')}>
+                        &bull; {child.title}
+                      </span>
+                      <span className="text-[10px] text-mutedText-light dark:text-mutedText-dark">
+                        {child.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showAddSubtask && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Input
+                    type="text"
+                    data-testid="detail-subtask-input"
+                    placeholder="New subtask title... (press Enter)"
+                    value={newSubtaskTitle}
+                    onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddSubtask(e);
+                      } else if (e.key === 'Escape') {
+                        setShowAddSubtask(false);
+                        setNewSubtaskTitle('');
+                      }
+                    }}
+                    className="h-8 text-xs flex-1"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    data-testid="detail-save-subtask-btn"
+                    onClick={handleAddSubtask}
+                    disabled={!newSubtaskTitle.trim() || isPending}
+                    className="h-8 text-xs"
+                  >
+                    Add
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddSubtask(false);
+                      setNewSubtaskTitle('');
+                    }}
+                    className="text-xs text-mutedText-light hover:text-primaryText-light dark:text-mutedText-dark dark:hover:text-primaryText-dark"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Actions Bar */}
@@ -370,7 +628,7 @@ export function ItemDetail({
                   variant="ghost"
                   data-testid="detail-delete-btn"
                   onClick={() => {
-                    if (childCount > 0) {
+                    if (descendantCount > 0) {
                       setShowDeleteConfirm(true);
                     } else {
                       handleDelete();
@@ -388,14 +646,14 @@ export function ItemDetail({
         </SheetContent>
       </Sheet>
 
-      {/* Subtree Delete Confirmation Dialog */}
+      {/* Subtree Delete Confirmation Dialog with Recursive Count (T081) */}
       <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <DialogContent data-testid="delete-confirm-dialog" className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete item and subtasks?</DialogTitle>
             <DialogDescription>
-              &ldquo;{item.title}&rdquo; contains {childCount}{' '}
-              {childCount === 1 ? 'subtask' : 'subtasks'}. Deleting it will permanently
+              &ldquo;{item.title}&rdquo; contains {descendantCount}{' '}
+              {descendantCount === 1 ? 'subtask' : 'subtasks'}. Deleting it will permanently
               remove the entire subtree. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>

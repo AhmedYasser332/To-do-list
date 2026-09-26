@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { getSupabaseConfig } from './config';
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
@@ -8,13 +9,9 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://uljtdqvnvfxqunchhvjz.supabase.co';
-  const key =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    '';
+  const { url, publishableKey } = getSupabaseConfig();
 
-  const supabase = createServerClient(url, key, {
+  const supabase = createServerClient(url, publishableKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();

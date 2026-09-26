@@ -7,6 +7,7 @@ import {
   addWeeks,
   addMonths,
   addYears,
+  resolveItemScheduling,
 } from '@/domain/calendar';
 import type { WeekDay } from '@/types/domain';
 
@@ -90,6 +91,88 @@ describe('Calendar Math & Period Calculations (TDD)', () => {
     it('adds and subtracts years accurately', () => {
       expect(addYears('2026-09-26', 1)).toBe('2027-09-26');
       expect(addYears('2026-09-26', -1)).toBe('2025-09-26');
+    });
+  });
+
+  describe('resolveItemScheduling (preventing scheduling corruption)', () => {
+    it('preserves existing Week boundaries when saving an existing Week item', () => {
+      const result = resolveItemScheduling({
+        currentHorizon: 'week',
+        currentPeriodStart: '2026-09-21',
+        currentPeriodEnd: '2026-09-27',
+        targetHorizon: 'week',
+      });
+
+      expect(result.periodStart).toBe('2026-09-21');
+      expect(result.periodEnd).toBe('2026-09-27');
+      expect(result.time).toBeNull();
+    });
+
+    it('preserves existing Month boundaries when saving an existing Month item', () => {
+      const result = resolveItemScheduling({
+        currentHorizon: 'month',
+        currentPeriodStart: '2026-09-01',
+        currentPeriodEnd: '2026-09-30',
+        targetHorizon: 'month',
+      });
+
+      expect(result.periodStart).toBe('2026-09-01');
+      expect(result.periodEnd).toBe('2026-09-30');
+      expect(result.time).toBeNull();
+    });
+
+    it('preserves existing Year boundaries when saving an existing Year item', () => {
+      const result = resolveItemScheduling({
+        currentHorizon: 'year',
+        currentPeriodStart: '2026-01-01',
+        currentPeriodEnd: '2026-12-31',
+        targetHorizon: 'year',
+      });
+
+      expect(result.periodStart).toBe('2026-01-01');
+      expect(result.periodEnd).toBe('2026-12-31');
+      expect(result.time).toBeNull();
+    });
+
+    it('computes full calendar week when changing week date', () => {
+      const result = resolveItemScheduling({
+        currentHorizon: 'week',
+        currentPeriodStart: '2026-09-21',
+        currentPeriodEnd: '2026-09-27',
+        targetHorizon: 'week',
+        targetDate: '2026-10-06', // Tuesday
+        firstDayOfWeek: 'monday',
+      });
+
+      expect(result.periodStart).toBe('2026-10-05');
+      expect(result.periodEnd).toBe('2026-10-11');
+    });
+
+    it('sets null periodStart and periodEnd for Inbox', () => {
+      const result = resolveItemScheduling({
+        currentHorizon: 'day',
+        currentPeriodStart: '2026-09-26',
+        currentPeriodEnd: '2026-09-26',
+        currentTime: '14:00',
+        targetHorizon: 'inbox',
+      });
+
+      expect(result.periodStart).toBeNull();
+      expect(result.periodEnd).toBeNull();
+      expect(result.time).toBeNull();
+    });
+
+    it('sets periodEnd equal to periodStart for Day items and preserves optional time', () => {
+      const result = resolveItemScheduling({
+        currentHorizon: 'inbox',
+        targetHorizon: 'day',
+        targetDate: '2026-10-15',
+        targetTime: '10:30',
+      });
+
+      expect(result.periodStart).toBe('2026-10-15');
+      expect(result.periodEnd).toBe('2026-10-15');
+      expect(result.time).toBe('10:30');
     });
   });
 });

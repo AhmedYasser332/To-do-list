@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { signOut } from '@/app/(auth)/actions';
 import { cn } from '@/lib/utils';
+import { getAreaColor } from '@/domain/areas';
 import type { AreaRow } from '@/types/domain';
 
 interface DesktopSidebarProps {
@@ -100,7 +101,10 @@ export function DesktopSidebar({ areas = [] }: DesktopSidebarProps) {
                         : 'text-primaryText-light hover:bg-[#F2F2EE] dark:text-primaryText-dark dark:hover:bg-[#2A2A2A]'
                     )}
                   >
-                    <span className="h-2 w-2 rounded-full bg-accent shrink-0" />
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: getAreaColor(area.color_token) }}
+                    />
                     <span className="truncate">{area.name}</span>
                   </Link>
                 );

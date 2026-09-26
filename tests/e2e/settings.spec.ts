@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Settings & Area Management (US6, US7)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
-    await page.fill('input[type="email"]', 'owner@example.com');
-    await page.fill('input[type="password"]', 'password123');
+    await page.fill('input[type="email"]', process.env.OWNER_EMAIL || 'owner@example.com');
+    await page.fill('input[type="password"]', process.env.OWNER_PASSWORD || 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/today/);
   });
@@ -43,19 +43,20 @@ test.describe('Settings & Area Management (US6, US7)', () => {
     const areaName = `Study ${Date.now()}`;
     const updatedName = `${areaName} Advanced`;
 
-    // Create Area
-    const input = page.locator('input[placeholder*="New Area name"]');
-    await input.fill(areaName);
-    await page.click('button:has-text("Add Area")');
+    // Create Area with color selection (T075)
+    await page.fill('[data-testid="new-area-name-input"]', areaName);
+    await page.locator('[data-testid="color-picker-sage-green"]').click();
+    await page.locator('[data-testid="add-area-btn"]').click();
 
     // Verify it appears in the areas list
     const areaRow = page.locator(`[data-testid="area-row"]:has-text("${areaName}")`);
     await expect(areaRow).toBeVisible();
 
-    // Edit Area
+    // Edit Area name and change color
     await areaRow.locator('[data-testid="edit-area-btn"]').click();
     const editInput = page.locator('input[autoFocus], input.h-7').first();
     await editInput.fill(updatedName);
+    await page.locator('[data-testid="edit-color-picker-warm-amber"]').click();
     await page.locator('[data-testid="save-area-btn"]').click();
 
     // Verify updated name appears
@@ -63,7 +64,9 @@ test.describe('Settings & Area Management (US6, US7)', () => {
     await expect(updatedRow).toBeVisible();
 
     // Delete Area
-    await updatedRow.locator('[data-testid="delete-area-btn"]').click();
+    const deleteBtn = updatedRow.locator('[data-testid="delete-area-btn"]');
+    await expect(deleteBtn).toBeEnabled();
+    await deleteBtn.click();
     await expect(page.locator(`[data-testid="area-row"]:has-text("${updatedName}")`)).not.toBeVisible();
   });
 });

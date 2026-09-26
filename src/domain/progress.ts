@@ -101,3 +101,40 @@ export function computeTreeProgress(items: ItemRow[]): Map<string, number> {
 
   return progressMap;
 }
+
+/**
+ * Calculates an item's relative contribution percentage toward its parent's progress
+ * compared with its active (non-cancelled) siblings.
+ * Returns null for root items with no parent.
+ */
+export function calculateSiblingContribution(
+  itemId: string,
+  allItems: ItemRow[],
+  targetWeight?: number
+): number | null {
+  const currentItem = allItems.find((i) => i.id === itemId);
+  const parentId = currentItem?.parent_id;
+  if (!parentId) return null;
+
+  const siblings = allItems.filter(
+    (i) => i.parent_id === parentId && i.status !== 'cancelled'
+  );
+
+  if (siblings.length === 0) return 100;
+
+  let totalWeight = 0;
+  let itemWeight = 1;
+
+  for (const s of siblings) {
+    const rawW =
+      s.id === itemId && targetWeight !== undefined
+        ? targetWeight
+        : Number(s.weight);
+    const w = Number.isFinite(rawW) && rawW > 0 ? rawW : 1;
+    if (s.id === itemId) itemWeight = w;
+    totalWeight += w;
+  }
+
+  if (totalWeight <= 0) return 0;
+  return Math.round((itemWeight / totalWeight) * 1000) / 10;
+}

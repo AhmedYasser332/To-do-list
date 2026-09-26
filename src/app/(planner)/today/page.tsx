@@ -5,8 +5,18 @@ import { QuickAdd } from '@/components/planner/quick-add';
 import { ItemTree } from '@/components/planner/item-tree';
 import { AreaFilter } from '@/components/planner/area-filter';
 import { Calendar, Sun, Clock } from 'lucide-react';
-import { buildTree, filterTreeByArea } from '@/domain/hierarchy';
-import type { ItemRow as ItemRowType, AreaRow } from '@/types/domain';
+import {
+  buildTree,
+  projectTreeForView,
+  filterTreeByArea,
+} from '@/domain/hierarchy';
+import {
+  getTodayDate,
+  getWeekBoundaries,
+  getMonthBoundaries,
+  getYearBoundaries,
+} from '@/domain/calendar';
+import type { ItemRow as ItemRowType, AreaRow, WeekDay } from '@/types/domain';
 
 interface TodayPageProps {
   searchParams: Promise<{ area?: string }>;
@@ -25,49 +35,81 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
 
   const userId = claimsData.claims.sub as string;
 
-  // Single user-scoped fetch for all items
-  const { data: allItemsData } = await supabase
-    .from('items')
-    .select('*')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true });
-
-  const { data: areasData } = await supabase
-    .from('areas')
-    .select('*')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true });
+  // Single parallel fetch for items, areas, and preferences (T087)
+  const [{ data: allItemsData }, { data: areasData }, { data: prefsData }] =
+    await Promise.all([
+      supabase
+        .from('items')
+        .select('*')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('areas')
+        .select('*')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('user_preferences')
+        .select('first_day_of_week')
+        .eq('user_id', userId)
+        .maybeSingle(),
+    ]);
 
   const allItems: ItemRowType[] = allItemsData || [];
   const areas: AreaRow[] = areasData || [];
+  const firstDayOfWeek: WeekDay = prefsData?.first_day_of_week || 'monday';
 
-  // Today's local ISO date YYYY-MM-DD
-  const todayDateStr = new Date().toISOString().split('T')[0];
+  // 1. Build complete hierarchy and calculate progress across full tree (T069)
+  const fullTree = buildTree(allItems);
 
-  // Filter day items scheduled for today
-  let todayItems = allItems.filter(
+  // 2. Today's local date (T084)
+  const todayDateStr = getTodayDate();
+
+  // 3. Project already-computed tree into Today's Day items (T069)
+  const todayNodes = projectTreeForView(
+    fullTree,
     (item) => item.horizon === 'day' && item.period_start === todayDateStr
   );
 
   // Partition into Timed and Anytime
-  const timedItems = todayItems
+  let timedTree = todayNodes
     .filter((item) => Boolean(item.time))
     .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
-  const anytimeItems = todayItems.filter((item) => !item.time);
-
-  let timedTree = buildTree(timedItems);
-  let anytimeTree = buildTree(anytimeItems);
+  let anytimeTree = todayNodes.filter((item) => !item.time);
 
   if (activeAreaId) {
     timedTree = filterTreeByArea(timedTree, activeAreaId);
     anytimeTree = filterTreeByArea(anytimeTree, activeAreaId);
   }
 
-  // Relevant Week, Month, and Year items for compact context area
-  const weekItems = allItems.filter((i) => i.horizon === 'week');
-  const monthItems = allItems.filter((i) => i.horizon === 'month');
-  const yearItems = allItems.filter((i) => i.horizon === 'year');
+  // 4. Relevant current Week, Month, and Year context items (T078)
+  const { start: weekStart, end: weekEnd } = getWeekBoundaries(todayDateStr, firstDayOfWeek);
+  const now = new Date();
+  const { start: monthStart, end: monthEnd } = getMonthBoundaries(
+    now.getFullYear(),
+    now.getMonth() + 1
+  );
+  const { start: yearStart, end: yearEnd } = getYearBoundaries(now.getFullYear());
+
+  const currentWeekItems = fullTree.filter(
+    (i) =>
+      i.horizon === 'week' &&
+      i.period_start === weekStart &&
+      i.period_end === weekEnd
+  );
+  const currentMonthItems = fullTree.filter(
+    (i) =>
+      i.horizon === 'month' &&
+      i.period_start === monthStart &&
+      i.period_end === monthEnd
+  );
+  const currentYearItems = fullTree.filter(
+    (i) =>
+      i.horizon === 'year' &&
+      i.period_start === yearStart &&
+      i.period_end === yearEnd
+  );
 
   const todayFormatted = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -93,13 +135,15 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
         <AreaFilter areas={areas} activeAreaId={activeAreaId} />
       </div>
 
-      {/* Quick Add */}
+      {/* Quick Add with Progressive Controls (T073) */}
       <div className="pt-1">
         <QuickAdd
           defaultHorizon="day"
           defaultPeriodStart={todayDateStr}
           defaultPeriodEnd={todayDateStr}
           defaultAreaId={activeAreaId || null}
+          areas={areas}
+          candidateParents={allItems}
           placeholder="Add a task for Today (+ Time for specific hour)..."
         />
       </div>
@@ -115,7 +159,12 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
             No timed tasks scheduled
           </p>
         ) : (
-          <ItemTree nodes={timedTree} areas={areas} />
+          <ItemTree
+            nodes={timedTree}
+            allItems={allItems}
+            areas={areas}
+            firstDayOfWeek={firstDayOfWeek}
+          />
         )}
       </section>
 
@@ -130,12 +179,17 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
             No anytime tasks for today
           </p>
         ) : (
-          <ItemTree nodes={anytimeTree} areas={areas} />
+          <ItemTree
+            nodes={anytimeTree}
+            allItems={allItems}
+            areas={areas}
+            firstDayOfWeek={firstDayOfWeek}
+          />
         )}
       </section>
 
-      {/* Compact Context Area (Relevant Week, Month, and Year items) */}
-      {(weekItems.length > 0 || monthItems.length > 0 || yearItems.length > 0) && (
+      {/* Compact Context Area (Only Relevant Current Week, Month, and Year items) (T078) */}
+      {(currentWeekItems.length > 0 || currentMonthItems.length > 0 || currentYearItems.length > 0) && (
         <section className="pt-4 border-t border-border-light/60 dark:border-border-dark/60 space-y-2">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-mutedText-light dark:text-mutedText-dark">
             Planning Context
@@ -143,43 +197,79 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Week Context */}
             <div className="rounded border border-border-light bg-surface-light p-2.5 dark:border-border-dark dark:bg-surface-dark">
-              <span className="text-[11px] font-medium text-mutedText-light block mb-1">
-                This Week ({weekItems.length})
+              <span className="text-[11px] font-medium text-mutedText-light dark:text-mutedText-dark block mb-1">
+                This Week ({currentWeekItems.length})
               </span>
               <div className="space-y-1">
-                {weekItems.slice(0, 3).map((w) => (
-                  <div key={w.id} className="text-xs truncate text-primaryText-light dark:text-primaryText-dark">
-                    • {w.title}
-                  </div>
-                ))}
+                {currentWeekItems.length === 0 ? (
+                  <p className="text-xs italic text-mutedText-light/70 dark:text-mutedText-dark/70">
+                    No weekly items
+                  </p>
+                ) : (
+                  currentWeekItems.slice(0, 3).map((w) => (
+                    <div
+                      key={w.id}
+                      className="text-xs flex items-center justify-between text-primaryText-light dark:text-primaryText-dark"
+                    >
+                      <span className="truncate flex-1">• {w.title}</span>
+                      <span className="text-[10px] font-mono text-mutedText-light dark:text-mutedText-dark ml-2">
+                        {Math.round(w.progress || 0)}%
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
             {/* Month Context */}
             <div className="rounded border border-border-light bg-surface-light p-2.5 dark:border-border-dark dark:bg-surface-dark">
-              <span className="text-[11px] font-medium text-mutedText-light block mb-1">
-                This Month ({monthItems.length})
+              <span className="text-[11px] font-medium text-mutedText-light dark:text-mutedText-dark block mb-1">
+                This Month ({currentMonthItems.length})
               </span>
               <div className="space-y-1">
-                {monthItems.slice(0, 3).map((m) => (
-                  <div key={m.id} className="text-xs truncate text-primaryText-light dark:text-primaryText-dark">
-                    • {m.title}
-                  </div>
-                ))}
+                {currentMonthItems.length === 0 ? (
+                  <p className="text-xs italic text-mutedText-light/70 dark:text-mutedText-dark/70">
+                    No monthly items
+                  </p>
+                ) : (
+                  currentMonthItems.slice(0, 3).map((m) => (
+                    <div
+                      key={m.id}
+                      className="text-xs flex items-center justify-between text-primaryText-light dark:text-primaryText-dark"
+                    >
+                      <span className="truncate flex-1">• {m.title}</span>
+                      <span className="text-[10px] font-mono text-mutedText-light dark:text-mutedText-dark ml-2">
+                        {Math.round(m.progress || 0)}%
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
             {/* Year Context */}
             <div className="rounded border border-border-light bg-surface-light p-2.5 dark:border-border-dark dark:bg-surface-dark">
-              <span className="text-[11px] font-medium text-mutedText-light block mb-1">
-                This Year ({yearItems.length})
+              <span className="text-[11px] font-medium text-mutedText-light dark:text-mutedText-dark block mb-1">
+                This Year ({currentYearItems.length})
               </span>
               <div className="space-y-1">
-                {yearItems.slice(0, 3).map((y) => (
-                  <div key={y.id} className="text-xs truncate text-primaryText-light dark:text-primaryText-dark">
-                    • {y.title}
-                  </div>
-                ))}
+                {currentYearItems.length === 0 ? (
+                  <p className="text-xs italic text-mutedText-light/70 dark:text-mutedText-dark/70">
+                    No yearly items
+                  </p>
+                ) : (
+                  currentYearItems.slice(0, 3).map((y) => (
+                    <div
+                      key={y.id}
+                      className="text-xs flex items-center justify-between text-primaryText-light dark:text-primaryText-dark"
+                    >
+                      <span className="truncate flex-1">• {y.title}</span>
+                      <span className="text-[10px] font-mono text-mutedText-light dark:text-mutedText-dark ml-2">
+                        {Math.round(y.progress || 0)}%
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

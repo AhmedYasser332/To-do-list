@@ -291,3 +291,31 @@
 4. **STOP & VALIDATE**: Test User Story 1 independently. At this milestone, the owner can log in, view Today, capture tasks with optional time, and toggle completion. This forms the working MVP.
 5. **Incremental Delivery**: Sequentially deliver Phase 5 (Hierarchy) -> Phase 6 (Progress) -> Phase 7 (Parent Completion) -> Phase 8 (Areas) -> Phase 9 (Horizons & Settings) -> Phase 10 (Details, Reordering & Error States).
 6. **Final Gate**: Execute Phase 11 for complete automated verification, production Next.js build, and Supabase advisor compliance.
+7. **UAT Stabilization**: Execute Phase 12 to resolve confirmed human UAT and external source audit findings, preserving the approved Slice 1 scope and Calm Utility visual direction.
+
+---
+
+## Phase 12 — UAT Stabilization
+
+- [x] T068 [P0]: Fix Item Detail scheduling corruption in `src/components/planner/item-detail.tsx`: preserve existing periodEnd/periodStart or compute full calendar boundaries (Week, Month, Year); do not overwrite `periodEnd = periodStart` on save.
+- [x] T069 [P0]: Fix full-tree progress calculation: load complete items collection, compute recursive progress on the full tree, then project into horizon/area views (independent hierarchy and scheduling).
+- [x] T070 [P0]: Fix child creation scheduling inheritance in `src/app/(planner)/actions.ts`: only Day parent passes Day horizon and date; Inbox/Week/Month/Year parents create unscheduled Inbox children retaining `parent_id` and Area.
+- [x] T071 [P0]: Fix mobile Plan navigation in `src/components/shell/mobile-nav.tsx`: replace static `/week` link with a mobile planning chooser (Week, Month, Year) using a compact sheet/popover. Add real mobile Playwright test.
+- [x] T072 [P0]: Make subtasks discoverable on touch: provide touch-visible Add Subtask actions on mobile rows, in expanded subtrees, and in Item Detail.
+- [x] T073 [P1]: Progressive disclosure in Quick Add: add compact optional creation controls (Area, Parent, Day Time/Date) without creating a giant modal.
+- [x] T074 [P1]: Add Day task creation directly from Week view: provide subtle `+ Add task` action per day breakdown section with automatic day scheduling.
+- [x] T075 [P1]: Implement semantic Area colors: 8-10 muted palette choices, persist in `areas.color_token`, editable in Settings, and displayed on sidebar dots and item badges.
+- [x] T076 [P1]: Clarify progress weight: rename field to "Progress weight", add concise helper text, de-emphasize for root items, and display relative contribution percentage among siblings.
+- [x] T077 [P1]: Lightweight Month and Year breakdowns: provide drill-down context paths into constituent weeks and months.
+- [x] T078 [P1]: Fix Today planning context: display only relevant current Week, Month, and Year items using local boundaries and true tree progress.
+- [x] T079 [P1]: Fix Parent picker scope in Item Detail: populate candidate parents from full user item collection, excluding self and descendants via `wouldCreateCycle`.
+- [x] T080 [P1]: Support nested same-parent sibling reordering: enable sibling reordering at arbitrary nesting depths without cross-parent movement.
+- [x] T081 [P1]: Recursive subtree delete count: compute and display total affected descendants at all depths in `deleteItemSubtree` confirmation dialog.
+- [x] T082 [P1]: Recursive parent completion descendant check: verify if any descendant at any depth is incomplete before triggering the 3-option resolution dialog.
+- [x] T083 [P1]: Preserve cross-horizon context in Area filter: retain dim contextual ancestors when descendant matches active Area.
+- [x] T084 [P2]: Local date correctness: replace UTC `toISOString().split('T')[0]` with local calendar date helper.
+- [x] T085 [P2]: Cancel + manual completion integrity: reset `is_manually_completed` to false when cancelling or reopening an item.
+- [x] T086 [P2]: Fail fast on missing Supabase environment variables: throw clear errors during setup instead of silently falling back to production URL.
+- [x] T087 [Perf]: Measure navigation latency in dev and prod mode, eliminate request waterfalls using `Promise.all` and request-scoped deduplication, add `loading.tsx` route boundaries with `LoadingSkeleton`.
+- [x] T088 [Verification]: Run comprehensive test suite, TypeScript, ESLint, production build, desktop/mobile exploratory pass, and `$speckit-converge`.
+

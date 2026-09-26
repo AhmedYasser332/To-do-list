@@ -26,8 +26,8 @@ test.describe('Single-User Authentication & Route Gating (US2)', () => {
 
   test('allows owner to sign in, persists session across reload, and signs out', async ({ page }) => {
     await page.goto('/login');
-    await page.fill('input[type="email"]', 'owner@example.com');
-    await page.fill('input[type="password"]', 'password123');
+    await page.fill('input[type="email"]', process.env.OWNER_EMAIL || 'owner@example.com');
+    await page.fill('input[type="password"]', process.env.OWNER_PASSWORD || 'password123');
     await page.click('button[type="submit"]');
 
     // Should redirect to /today

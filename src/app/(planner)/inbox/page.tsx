@@ -5,8 +5,8 @@ import { QuickAdd } from '@/components/planner/quick-add';
 import { ItemTree } from '@/components/planner/item-tree';
 import { AreaFilter } from '@/components/planner/area-filter';
 import { Inbox } from 'lucide-react';
-import { buildTree, filterTreeByArea } from '@/domain/hierarchy';
-import type { ItemRow, AreaRow } from '@/types/domain';
+import { buildTree, projectTreeForView, filterTreeByArea } from '@/domain/hierarchy';
+import type { ItemRow, AreaRow, WeekDay } from '@/types/domain';
 
 interface InboxPageProps {
   searchParams: Promise<{ area?: string }>;
@@ -25,28 +25,41 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
 
   const userId = claimsData.claims.sub as string;
 
-  const { data: allItemsData } = await supabase
-    .from('items')
-    .select('*')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true });
-
-  const { data: areasData } = await supabase
-    .from('areas')
-    .select('*')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true });
+  // Single parallel fetch for items, areas, and preferences (T087)
+  const [{ data: allItemsData }, { data: areasData }, { data: prefsData }] =
+    await Promise.all([
+      supabase
+        .from('items')
+        .select('*')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('areas')
+        .select('*')
+        .eq('user_id', userId)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('user_preferences')
+        .select('first_day_of_week')
+        .eq('user_id', userId)
+        .maybeSingle(),
+    ]);
 
   const allItems: ItemRow[] = allItemsData || [];
   const areas: AreaRow[] = areasData || [];
+  const firstDayOfWeek: WeekDay = prefsData?.first_day_of_week || 'monday';
 
-  // Filter items assigned to Inbox horizon (and their children)
-  const inboxItems = allItems.filter((item) => item.horizon === 'inbox');
-  let tree = buildTree(inboxItems);
+  // 1. Build complete hierarchy and calculate progress across full tree (T069)
+  const fullTree = buildTree(allItems);
+
+  // 2. Project full tree into Inbox items
+  let tree = projectTreeForView(fullTree, (item) => item.horizon === 'inbox');
 
   if (activeAreaId) {
     tree = filterTreeByArea(tree, activeAreaId);
   }
+
+  const totalInboxCount = allItems.filter((i) => i.horizon === 'inbox').length;
 
   return (
     <div className="space-y-6">
@@ -58,18 +71,20 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
             <span>Inbox</span>
           </h1>
           <p className="text-xs text-mutedText-light dark:text-mutedText-dark">
-            Frictionless quick-capture for ideas and unplaced items ({inboxItems.length})
+            Frictionless quick-capture for ideas and unplaced items ({totalInboxCount})
           </p>
         </div>
 
         <AreaFilter areas={areas} activeAreaId={activeAreaId} />
       </div>
 
-      {/* Quick Add */}
+      {/* Quick Add with Progressive Controls (T073) */}
       <div>
         <QuickAdd
           defaultHorizon="inbox"
           defaultAreaId={activeAreaId || null}
+          areas={areas}
+          candidateParents={allItems}
           placeholder="Capture a thought to your Inbox... (press Enter)"
         />
       </div>
@@ -83,7 +98,12 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
             </p>
           </div>
         ) : (
-          <ItemTree nodes={tree} areas={areas} />
+          <ItemTree
+            nodes={tree}
+            allItems={allItems}
+            areas={areas}
+            firstDayOfWeek={firstDayOfWeek}
+          />
         )}
       </section>
     </div>

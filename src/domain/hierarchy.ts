@@ -1,4 +1,4 @@
-import type { ItemRow, ItemNode } from '@/types/domain';
+import type { ItemRow, ItemNode, Horizon } from '@/types/domain';
 import { computeTreeProgress } from './progress';
 
 /**
@@ -131,4 +131,76 @@ export function filterTreeByArea(
   }
 
   return result;
+}
+
+export interface ChildSchedulingContext {
+  horizon: Horizon;
+  period_start: string | null;
+  period_end: string | null;
+  time: null;
+  area_id: string | null;
+}
+
+/**
+ * Determines child item scheduling and area inheritance rules (T070).
+ * - Parent relationship is always established.
+ * - Area is inherited when parent has an Area.
+ * - ONLY a Day parent automatically gives its child Day horizon and date.
+ * - Inbox, Week, Month, and Year parents create unscheduled Inbox children.
+ */
+export function determineChildScheduling(parent: {
+  horizon: Horizon;
+  period_start?: string | null;
+  period_end?: string | null;
+  area_id?: string | null;
+}): ChildSchedulingContext {
+  const isDayParent = parent.horizon === 'day';
+  return {
+    horizon: isDayParent ? 'day' : 'inbox',
+    period_start: isDayParent ? parent.period_start ?? null : null,
+    period_end: isDayParent ? parent.period_end ?? null : null,
+    time: null,
+    area_id: parent.area_id ?? null,
+  };
+}
+
+/**
+ * Projects an already-computed full tree into a specific view without recalculating or truncating progress.
+ * Finds all nodes matching the view predicate.
+ * If a matching node's parent is also in the view, it stays nested under that parent.
+ * If its parent is outside the view (or null), it is promoted to a top-level root for that view.
+ */
+export function projectTreeForView(
+  fullTree: ItemNode[],
+  predicate: (item: ItemRow) => boolean
+): ItemNode[] {
+  const matchingMap = new Map<string, ItemNode>();
+
+  function collectMatching(nodes: ItemNode[]) {
+    for (const node of nodes) {
+      if (predicate(node)) {
+        matchingMap.set(node.id, {
+          ...node,
+          children: [...(node.children || [])],
+        });
+      }
+      if (node.children && node.children.length > 0) {
+        collectMatching(node.children);
+      }
+    }
+  }
+
+  collectMatching(fullTree);
+
+  const projectedRoots: ItemNode[] = [];
+
+  for (const node of matchingMap.values()) {
+    if (node.parent_id && matchingMap.has(node.parent_id)) {
+      // Parent is also in this view, so this node remains inside parent's children array
+    } else {
+      projectedRoots.push(node);
+    }
+  }
+
+  return projectedRoots.sort((a, b) => a.sort_order - b.sort_order);
 }

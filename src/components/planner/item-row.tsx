@@ -20,6 +20,13 @@ interface ItemRowProps {
   onParentCompleteRequest?: (parent: ItemNode) => void;
 }
 
+function hasIncompleteDescendants(node: ItemNode): boolean {
+  if (!node.children || node.children.length === 0) return false;
+  return node.children.some(
+    (c) => c.status === 'incomplete' || hasIncompleteDescendants(c)
+  );
+}
+
 export function ItemRow({
   item,
   areas = [],
@@ -37,8 +44,12 @@ export function ItemRow({
   const hasChildren = item.children && item.children.length > 0;
   const area = areas.find((a) => a.id === item.area_id);
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const lastToggleRef = React.useRef(0);
+
+  const performToggle = () => {
+    const now = Date.now();
+    if (now - lastToggleRef.current < 400) return;
+    lastToggleRef.current = now;
 
     // If unchecking a completed parent
     if (isComplete) {
@@ -52,12 +63,9 @@ export function ItemRow({
       return;
     }
 
-    // If parent with uncompleted descendants and currently incomplete, trigger 3-option prompt
+    // If parent with uncompleted descendants at any depth, trigger 3-option prompt (T082)
     if (hasChildren && !isComplete && onParentCompleteRequest) {
-      const hasIncompleteDescendants = item.children.some(
-        (c) => c.status === 'incomplete'
-      );
-      if (hasIncompleteDescendants) {
+      if (hasIncompleteDescendants(item)) {
         onParentCompleteRequest(item);
         return;
       }
@@ -66,6 +74,15 @@ export function ItemRow({
     startTransition(async () => {
       await toggleItemCompletion(item.id, item.status);
     });
+  };
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    performToggle();
+  };
+
+  const handleCheckedChange = () => {
+    performToggle();
   };
 
   return (
@@ -110,6 +127,7 @@ export function ItemRow({
             checked={isComplete}
             disabled={isPending || isContextRow}
             onClick={handleCheckboxClick}
+            onCheckedChange={handleCheckedChange}
           />
         </div>
 
@@ -134,7 +152,10 @@ export function ItemRow({
         {/* Area indicator */}
         {area && (
           <span className="flex items-center gap-1 text-[11px] text-mutedText-light dark:text-mutedText-dark shrink-0">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            <span
+              className="h-1.5 w-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: area.color_token || 'var(--accent)' }}
+            />
             <span className="truncate max-w-[80px]">{area.name}</span>
           </span>
         )}
@@ -155,16 +176,18 @@ export function ItemRow({
           </span>
         )}
 
-        {/* Add Child button visible on hover */}
+        {/* Add Child button: touch-visible on mobile, revealed on hover/focus on desktop */}
         {!isContextRow && (
           <button
             type="button"
+            data-testid="add-subtask-btn"
+            aria-label="Add subtask"
             onClick={(e) => {
               e.stopPropagation();
               onAddChild?.(item);
             }}
-            className="opacity-0 group-hover:opacity-100 p-1 text-mutedText-light hover:text-accent dark:text-mutedText-dark dark:hover:text-accent transition-opacity rounded"
-            title="Add Subtask"
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 p-1 text-mutedText-light hover:text-accent dark:text-mutedText-dark dark:hover:text-accent transition-opacity rounded cursor-pointer"
+            title="Add subtask"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
