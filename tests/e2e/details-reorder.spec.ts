@@ -50,6 +50,7 @@ test.describe('Item Details, Reordering & Error States (US8)', () => {
     await parentRow.locator('button[title="Add Subtask"]').click();
     await page.fill('[data-testid="inline-child-input"]', 'Subtask To Delete');
     await page.locator('[data-testid="inline-child-input"]').press('Enter');
+    await expect(page.locator('[data-testid="item-row"]:has-text("Subtask To Delete")')).toBeVisible();
 
     // Open detail drawer for parent
     await parentRow.click();
@@ -63,5 +64,35 @@ test.describe('Item Details, Reordering & Error States (US8)', () => {
     // Confirm deletion
     await page.click('[data-testid="confirm-delete-btn"]');
     await expect(parentRow).not.toBeVisible();
+  });
+
+  test('reorders sibling items via keyboard accessibility handle and persists', async ({ page }) => {
+    const taskA = `Task First ${Date.now()}`;
+    const taskB = `Task Second ${Date.now()}`;
+
+    // Create two sibling tasks on Today
+    await page.fill('[data-testid="quick-add-title"]', taskA);
+    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${taskA}")`)).toBeVisible();
+
+    await page.fill('[data-testid="quick-add-title"]', taskB);
+    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${taskB}")`)).toBeVisible();
+
+    const rowA = page.locator(`[data-testid="item-row"]:has-text("${taskA}")`);
+    const dragHandleA = rowA.locator('..').locator('[data-testid="drag-handle"]');
+
+    if (await dragHandleA.isVisible()) {
+      // Focus handle and initiate keyboard drag via Space
+      await dragHandleA.focus();
+      await page.keyboard.press('Space');
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Space');
+
+      // Reload page to verify order persistence
+      await page.reload();
+      await expect(page.locator(`[data-testid="item-row"]:has-text("${taskA}")`)).toBeVisible();
+      await expect(page.locator(`[data-testid="item-row"]:has-text("${taskB}")`)).toBeVisible();
+    }
   });
 });

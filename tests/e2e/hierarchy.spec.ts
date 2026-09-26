@@ -37,7 +37,7 @@ test.describe('Unlimited Hierarchy & Context Inheritance (US3)', () => {
     await expect(childRow).toBeVisible();
 
     // Test collapse chevron
-    const chevronBtn = parentRow.locator('button:has(svg)');
+    const chevronBtn = parentRow.locator('[data-testid="disclosure-chevron"]');
     await chevronBtn.click();
     await expect(childRow).not.toBeVisible();
 
