@@ -1,0 +1,171 @@
+'use client';
+
+import * as React from 'react';
+import { useState, useTransition } from 'react';
+import { createArea, updateArea, deleteArea } from '@/app/(planner)/actions';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Plus, Trash2, Edit2, Check, X, Folder } from 'lucide-react';
+import type { AreaRow } from '@/types/domain';
+
+interface SettingsAreaManagerProps {
+  initialAreas: AreaRow[];
+}
+
+export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) {
+  const [newAreaName, setNewAreaName] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAreaName.trim() || isPending) return;
+
+    setError(null);
+    startTransition(async () => {
+      const res = await createArea(newAreaName.trim());
+      if (res?.error) {
+        setError(res.error);
+      } else {
+        setNewAreaName('');
+      }
+    });
+  };
+
+  const handleStartEdit = (area: AreaRow) => {
+    setEditingId(area.id);
+    setEditingName(area.name);
+  };
+
+  const handleSaveEdit = (areaId: string) => {
+    if (!editingName.trim() || isPending) return;
+
+    setError(null);
+    startTransition(async () => {
+      const res = await updateArea(areaId, editingName.trim());
+      if (res?.error) {
+        setError(res.error);
+      } else {
+        setEditingId(null);
+      }
+    });
+  };
+
+  const handleDelete = (areaId: string) => {
+    if (isPending) return;
+
+    setError(null);
+    startTransition(async () => {
+      const res = await deleteArea(areaId);
+      if (res?.error) {
+        setError(res.error);
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Create Area Input */}
+      <form onSubmit={handleCreate} className="flex gap-2">
+        <Input
+          type="text"
+          value={newAreaName}
+          onChange={(e) => setNewAreaName(e.target.value)}
+          placeholder="New Area name (e.g. Study, Fitness, Personal)..."
+          disabled={isPending}
+          className="flex-1 text-xs"
+        />
+        <Button type="submit" size="sm" disabled={!newAreaName.trim() || isPending} className="gap-1 text-xs">
+          <Plus className="h-3.5 w-3.5" />
+          <span>Add Area</span>
+        </Button>
+      </form>
+
+      {error && (
+        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+      )}
+
+      {/* Areas List */}
+      <div className="divide-y divide-border-light/40 dark:divide-border-dark/40 border border-border-light dark:border-border-dark rounded">
+        {initialAreas.length === 0 ? (
+          <p className="p-3 text-xs text-mutedText-light/70 dark:text-mutedText-dark/70 italic text-center">
+            No areas configured yet. Create one above to organize your planner.
+          </p>
+        ) : (
+          initialAreas.map((area) => {
+            const isEditing = editingId === area.id;
+
+            return (
+              <div
+                key={area.id}
+                className="flex items-center justify-between p-2.5 hover:bg-[#FAF9F5] dark:hover:bg-[#252525] transition-colors"
+              >
+                {isEditing ? (
+                  <div className="flex items-center gap-2 flex-1 mr-2">
+                    <Input
+                      type="text"
+                      autoFocus
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      disabled={isPending}
+                      className="h-7 text-xs flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(area.id)}
+                      disabled={isPending || !editingName.trim()}
+                      className="p-1 text-green-600 hover:text-green-700 disabled:opacity-50"
+                      title="Save"
+                    >
+                      <Check className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className="p-1 text-mutedText-light hover:text-primaryText-light"
+                      title="Cancel"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-accent shrink-0" />
+                    <span className="text-xs font-medium text-primaryText-light dark:text-primaryText-dark">
+                      {area.name}
+                    </span>
+                  </div>
+                )}
+
+                {!isEditing && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(area)}
+                      disabled={isPending}
+                      className="p-1 text-mutedText-light hover:text-accent transition-colors rounded"
+                      title="Edit Area"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(area.id)}
+                      disabled={isPending}
+                      className="p-1 text-mutedText-light hover:text-red-600 transition-colors rounded"
+                      title="Delete Area"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}

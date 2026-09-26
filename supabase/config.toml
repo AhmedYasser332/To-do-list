@@ -1,0 +1,13 @@
+# Supabase configuration for local development
+project_id = "core-planner"
+
+[auth]
+enabled = true
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false
+
+[auth.anonymous]
+enabled = false

@@ -1,0 +1,66 @@
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+
+export async function updateSession(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://uljtdqvnvfxqunchhvjz.supabase.co';
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    '';
+
+  const supabase = createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({
+          request,
+        });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options)
+        );
+      },
+    },
+  });
+
+  // Verify identity using getClaims() per official guidance
+  let user = null;
+  try {
+    const { data: claimsData } = await supabase.auth.getClaims();
+    user = claimsData?.claims;
+  } catch {
+    user = null;
+  }
+
+  const pathname = request.nextUrl.pathname;
+  const isAuthRoute = pathname.startsWith('/login');
+  const isPublicRoute =
+    isAuthRoute ||
+    pathname.startsWith('/_next') ||
+    pathname === '/favicon.ico' ||
+    pathname.includes('.');
+
+  // Protect planner routes: if no authenticated user, redirect to /login
+  if (!user && !isPublicRoute) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/login';
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // If user is authenticated and visits /login, redirect to /today
+  if (user && isAuthRoute) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/today';
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  return response;
+}

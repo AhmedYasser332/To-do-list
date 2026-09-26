@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #FBFBF9;
+  --foreground: #2D2D2D;
+  --surface: #FFFFFF;
+  --border: #E5E5E0;
+  --muted: #737373;
+  --accent: #3B6D9E;
+  --accent-foreground: #FFFFFF;
+}
+
+.dark {
+  --background: #191919;
+  --foreground: #EAEAEA;
+  --surface: #222222;
+  --border: #2E2E2E;
+  --muted: #9A9A9A;
+  --accent: #3B6D9E;
+  --accent-foreground: #FFFFFF;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-height: 100vh;
+}
