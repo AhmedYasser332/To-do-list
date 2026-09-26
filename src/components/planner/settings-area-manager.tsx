@@ -100,6 +100,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
             return (
               <div
                 key={area.id}
+                data-testid="area-row"
                 className="flex items-center justify-between p-2.5 hover:bg-[#FAF9F5] dark:hover:bg-[#252525] transition-colors"
               >
                 {isEditing ? (
@@ -114,6 +115,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                     />
                     <button
                       type="button"
+                      data-testid="save-area-btn"
                       onClick={() => handleSaveEdit(area.id)}
                       disabled={isPending || !editingName.trim()}
                       className="p-1 text-green-600 hover:text-green-700 disabled:opacity-50"
@@ -123,6 +125,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                     </button>
                     <button
                       type="button"
+                      data-testid="cancel-area-edit-btn"
                       onClick={() => setEditingId(null)}
                       className="p-1 text-mutedText-light hover:text-primaryText-light"
                       title="Cancel"
@@ -143,6 +146,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
+                      data-testid="edit-area-btn"
                       onClick={() => handleStartEdit(area)}
                       disabled={isPending}
                       className="p-1 text-mutedText-light hover:text-accent transition-colors rounded"
@@ -152,6 +156,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                     </button>
                     <button
                       type="button"
+                      data-testid="delete-area-btn"
                       onClick={() => handleDelete(area.id)}
                       disabled={isPending}
                       className="p-1 text-mutedText-light hover:text-red-600 transition-colors rounded"

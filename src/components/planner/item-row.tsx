@@ -86,6 +86,8 @@ export function ItemRow({
         {hasChildren ? (
           <button
             type="button"
+            data-testid="disclosure-chevron"
+            aria-label={isExpanded ? "Collapse subtasks" : "Expand subtasks"}
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand?.(item.id);

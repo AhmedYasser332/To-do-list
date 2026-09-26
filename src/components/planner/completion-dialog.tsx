@@ -73,6 +73,7 @@ export function CompletionDialog({
           <Button
             type="button"
             variant="ghost"
+            data-testid="completion-cancel-btn"
             className="mt-1 text-xs"
             onClick={() => onOpenChange(false)}
           >
