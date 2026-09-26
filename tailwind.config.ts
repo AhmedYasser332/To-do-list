@@ -10,30 +10,51 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        sidebar: {
+          DEFAULT: 'var(--sidebar-background)',
+          light: '#F7F7F5',
+          dark: '#202020',
+        },
         canvas: {
+          DEFAULT: 'var(--background)',
           light: '#FBFBF9',
           dark: '#191919',
         },
         surface: {
+          DEFAULT: 'var(--surface)',
+          elevated: 'var(--surface-elevated)',
           light: '#FFFFFF',
           dark: '#222222',
         },
         border: {
+          DEFAULT: 'var(--border)',
+          subtle: 'var(--border-subtle)',
           light: '#E5E5E0',
           dark: '#2E2E2E',
         },
         primaryText: {
+          DEFAULT: 'var(--foreground)',
           light: '#2D2D2D',
-          dark: '#EAEAEA',
+          dark: '#EDEDEC',
         },
         mutedText: {
+          DEFAULT: 'var(--muted)',
           light: '#737373',
-          dark: '#9A9A9A',
+          dark: '#9B9A97',
         },
+        hover: 'var(--hover)',
+        selected: 'var(--selected)',
         accent: {
-          DEFAULT: '#3B6D9E',
-          hover: '#315A82',
-          subtle: '#EEF4FA',
+          DEFAULT: 'var(--accent)',
+          hover: 'var(--accent-hover)',
+          subtle: 'var(--accent-subtle)',
+          foreground: 'var(--accent-foreground)',
+        },
+        destructive: {
+          DEFAULT: 'var(--destructive)',
+          foreground: 'var(--destructive-foreground)',
         },
         area: {
           study: '#3B6D9E',

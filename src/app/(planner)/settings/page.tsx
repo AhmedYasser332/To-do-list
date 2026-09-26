@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { SettingsAreaManager } from '@/components/planner/settings-area-manager';
 import { SettingsPreferencesForm } from '@/components/planner/settings-preferences-form';
+import { ThemeSelector } from '@/components/planner/theme-selector';
 import { Settings as SettingsIcon } from 'lucide-react';
 import type { AreaRow, WeekDay } from '@/types/domain';
 
@@ -54,7 +55,17 @@ export default async function SettingsPage() {
         </div>
       </section>
 
-      {/* Section 2: Areas Management */}
+      {/* Section 2: Appearance */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-mutedText-light dark:text-mutedText-dark">
+          Appearance
+        </h2>
+        <div className="rounded border border-border-light bg-surface-light p-4 dark:border-border-dark dark:bg-surface-dark shadow-sm">
+          <ThemeSelector />
+        </div>
+      </section>
+
+      {/* Section 3: Areas Management */}
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-mutedText-light dark:text-mutedText-dark">
           Areas of Focus

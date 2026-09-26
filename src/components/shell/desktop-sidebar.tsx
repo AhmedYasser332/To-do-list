@@ -35,7 +35,7 @@ export function DesktopSidebar({ areas = [] }: DesktopSidebarProps) {
   ];
 
   return (
-    <aside className="hidden md:flex w-56 flex-col justify-between border-r border-border-light bg-surface-light p-3 dark:border-border-dark dark:bg-surface-dark select-none shrink-0 h-screen sticky top-0">
+    <aside className="hidden md:flex w-56 flex-col justify-between border-r border-border-light bg-surface-light p-3 dark:border-border-dark dark:bg-[#202020] select-none shrink-0 h-screen sticky top-0">
       <div className="space-y-4">
         {/* Header / Brand */}
         <div className="px-2 py-1.5 flex items-center justify-between">

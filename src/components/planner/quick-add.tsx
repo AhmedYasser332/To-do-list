@@ -84,7 +84,7 @@ export function QuickAdd({
                 type="button"
                 data-testid="quick-add-time-toggle"
                 onClick={() => setShowTime(true)}
-                className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-mutedText-light hover:bg-[#F2F2EE] hover:text-primaryText-light transition-colors dark:text-mutedText-dark dark:hover:bg-[#2A2A2A]"
+                className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-mutedText-light hover:bg-[#F2F2EE] hover:text-primaryText-light transition-colors dark:text-mutedText-dark dark:hover:bg-[#2A2A2A] dark:hover:text-primaryText-dark"
               >
                 <Clock className="h-3.5 w-3.5" />
                 <span>+ Time</span>
@@ -104,7 +104,7 @@ export function QuickAdd({
                     setShowTime(false);
                     setTime('');
                   }}
-                  className="text-mutedText-light hover:text-red-500"
+                  className="text-mutedText-light hover:text-red-500 dark:text-mutedText-dark dark:hover:text-red-400"
                 >
                   <X className="h-3 w-3" />
                 </button>

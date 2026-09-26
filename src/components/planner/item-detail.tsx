@@ -158,7 +158,7 @@ export function ItemDetail({
           <SheetHeader className="mb-4">
             <div className="flex items-center justify-between pr-6">
               <SheetTitle>Item Details</SheetTitle>
-              <span className="text-[11px] font-medium uppercase tracking-wider text-mutedText-light dark:text-mutedText-dark px-2 py-0.5 rounded bg-border-light/30">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-mutedText-light dark:text-mutedText-dark px-2 py-0.5 rounded bg-border-light/30 dark:bg-border-dark/30">
                 {status}
               </span>
             </div>
@@ -342,7 +342,7 @@ export function ItemDetail({
                     data-testid="detail-cancel-btn"
                     onClick={handleCancelStatus}
                     disabled={isPending}
-                    className="text-mutedText-light hover:text-amber-600 gap-1 text-xs"
+                    className="text-mutedText-light hover:text-amber-600 dark:text-mutedText-dark dark:hover:text-amber-400 gap-1 text-xs"
                     title="Cancel Item"
                   >
                     <Ban className="h-3.5 w-3.5" />
@@ -356,7 +356,7 @@ export function ItemDetail({
                     data-testid="detail-reopen-btn"
                     onClick={handleReopenStatus}
                     disabled={isPending}
-                    className="text-mutedText-light hover:text-green-600 gap-1 text-xs"
+                    className="text-mutedText-light hover:text-green-600 dark:text-mutedText-dark dark:hover:text-green-400 gap-1 text-xs"
                     title="Reopen Item"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
@@ -377,7 +377,7 @@ export function ItemDetail({
                     }
                   }}
                   disabled={isPending}
-                  className="text-mutedText-light hover:text-red-600 p-2"
+                  className="text-mutedText-light hover:text-red-600 dark:text-mutedText-dark dark:hover:text-red-400 p-2"
                   title="Delete Item"
                 >
                   <Trash2 className="h-4 w-4" />

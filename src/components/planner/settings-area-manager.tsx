@@ -127,7 +127,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                       type="button"
                       data-testid="cancel-area-edit-btn"
                       onClick={() => setEditingId(null)}
-                      className="p-1 text-mutedText-light hover:text-primaryText-light"
+                      className="p-1 text-mutedText-light hover:text-primaryText-light dark:text-mutedText-dark dark:hover:text-primaryText-dark"
                       title="Cancel"
                     >
                       <X className="h-4 w-4" />
@@ -149,7 +149,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                       data-testid="edit-area-btn"
                       onClick={() => handleStartEdit(area)}
                       disabled={isPending}
-                      className="p-1 text-mutedText-light hover:text-accent transition-colors rounded"
+                      className="p-1 text-mutedText-light hover:text-accent dark:text-mutedText-dark dark:hover:text-accent transition-colors rounded"
                       title="Edit Area"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
@@ -159,7 +159,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                       data-testid="delete-area-btn"
                       onClick={() => handleDelete(area.id)}
                       disabled={isPending}
-                      className="p-1 text-mutedText-light hover:text-red-600 transition-colors rounded"
+                      className="p-1 text-mutedText-light hover:text-red-600 dark:text-mutedText-dark dark:hover:text-red-400 transition-colors rounded"
                       title="Delete Area"
                     >
                       <Trash2 className="h-3.5 w-3.5" />

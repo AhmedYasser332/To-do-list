@@ -64,7 +64,7 @@ function SortableRowWrapper({ id, children }: SortableRowWrapperProps) {
         {...attributes}
         {...listeners}
         data-testid="drag-handle"
-        className="opacity-0 group-hover:opacity-60 focus:opacity-100 p-0.5 text-mutedText-light hover:text-primaryText-light cursor-grab active:cursor-grabbing transition-opacity shrink-0"
+        className="opacity-0 group-hover:opacity-60 focus:opacity-100 p-0.5 text-mutedText-light hover:text-primaryText-light dark:text-mutedText-dark dark:hover:text-primaryText-dark cursor-grab active:cursor-grabbing transition-opacity shrink-0"
         title="Drag to reorder"
       >
         <GripVertical className="h-3.5 w-3.5" />
@@ -240,7 +240,7 @@ export function ItemTree({
                 onChange={(e) => setChildTitle(e.target.value)}
                 placeholder="New subtask title... (press Enter)"
                 disabled={isPending}
-                className="flex-1 bg-transparent text-xs text-primaryText-light dark:text-primaryText-dark placeholder:text-mutedText-light focus:outline-none"
+                className="flex-1 bg-transparent text-xs text-primaryText-light dark:text-primaryText-dark placeholder:text-mutedText-light dark:placeholder:text-mutedText-dark focus:outline-none"
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     setActiveChildParentId(null);
@@ -254,7 +254,7 @@ export function ItemTree({
                   setActiveChildParentId(null);
                   setChildTitle('');
                 }}
-                className="text-[11px] text-mutedText-light hover:text-primaryText-light px-1"
+                className="text-[11px] text-mutedText-light hover:text-primaryText-light dark:text-mutedText-dark dark:hover:text-primaryText-dark px-1"
               >
                 Cancel
               </button>

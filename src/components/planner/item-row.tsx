@@ -92,7 +92,7 @@ export function ItemRow({
               e.stopPropagation();
               onToggleExpand?.(item.id);
             }}
-            className="p-0.5 text-mutedText-light hover:text-primaryText-light transition-colors"
+            className="p-0.5 text-mutedText-light hover:text-primaryText-light dark:text-mutedText-dark dark:hover:text-primaryText-dark transition-colors"
           >
             {isExpanded ? (
               <ChevronDown className="h-3.5 w-3.5" />
@@ -163,7 +163,7 @@ export function ItemRow({
               e.stopPropagation();
               onAddChild?.(item);
             }}
-            className="opacity-0 group-hover:opacity-100 p-1 text-mutedText-light hover:text-accent transition-opacity rounded"
+            className="opacity-0 group-hover:opacity-100 p-1 text-mutedText-light hover:text-accent dark:text-mutedText-dark dark:hover:text-accent transition-opacity rounded"
             title="Add Subtask"
           >
             <Plus className="h-3.5 w-3.5" />

@@ -17,7 +17,7 @@ export function MobileNav() {
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border-light bg-surface-light px-2 py-1.5 shadow-md dark:border-border-dark dark:bg-surface-dark select-none">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border-light bg-surface-light px-2 py-1.5 shadow-md dark:border-border-dark dark:bg-[#202020] select-none">
       {navItems.map((item) => {
         const Icon = item.icon;
         const isActive = pathname === item.href || (item.href === '/week' && (pathname === '/month' || pathname === '/year'));

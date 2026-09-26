@@ -37,7 +37,7 @@ export function AreaFilter({ areas, activeAreaId }: AreaFilterProps) {
         <select
           value=""
           onChange={(e) => setArea(e.target.value || null)}
-          className="bg-transparent text-xs rounded border border-border-light px-2 py-1 dark:border-border-dark text-primaryText-light dark:text-primaryText-dark focus:outline-none"
+          className="bg-surface-light text-xs rounded border border-border-light px-2 py-1 dark:bg-surface-dark dark:border-border-dark text-primaryText-light dark:text-primaryText-dark focus:outline-none"
         >
           <option value="">Filter by Area...</option>
           {areas.map((area) => (
