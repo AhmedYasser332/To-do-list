@@ -396,3 +396,19 @@ If an ambiguity materially affects user behavior, data integrity, architecture, 
 - use Spec Kit clarification when working within a feature specification
 
 For harmless implementation details, make the smallest reasonable choice consistent with existing patterns.
+
+## 13. Git Discipline
+
+After each meaningful logical change is complete and its relevant verification passes:
+1. Inspect `git status`.
+2. Commit the coherent change using a clear conventional commit message (a logical change is the commit unit; do not commit every individual line edit).
+3. Push the current branch to its configured upstream remote. Do not accumulate unpushed batches across an entire feature.
+
+Safety and execution rules:
+- Never commit or push `.env`, `.env.local`, secret keys, passwords, access tokens, generated test output, or known broken intermediate states.
+- Before pushing, verify relevant tests and quality checks for that change pass.
+- Never use `git push --force` unless explicitly authorized by the user.
+- Never silently rewrite shared Git history.
+- If push fails due to authentication, remote divergence, permissions, or conflicts, STOP and report the exact problem rather than running destructive Git commands.
+- If no remote/upstream is configured, report that rather than inventing one.
+
