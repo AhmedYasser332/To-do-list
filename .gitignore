@@ -24,6 +24,7 @@ dist/
 
 # Supabase
 supabase/.temp/
+supabase/.branches/
 
 # OS / Editor files
 .DS_Store
