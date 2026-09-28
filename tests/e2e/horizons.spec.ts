@@ -80,4 +80,40 @@ test.describe('Horizons Navigation & Period Quick Add (US7)', () => {
       await expect(page).toHaveURL(/\/week/);
     }
   });
+
+  test('Year view exposes Month Item tree progress in constituent month card', async ({ page }) => {
+    // Isolate this run with its own Area rather than deleting other items in
+    // a fixed month. This also keeps repeated runs independent of prior data.
+    const areaName = `Year Progress Area ${Date.now()}`;
+    await page.goto('/settings');
+    await page.fill('[data-testid="new-area-name-input"]', areaName);
+    await page.locator('[data-testid="add-area-btn"]').click();
+    await expect(page.locator(`[data-testid="area-row"]:has-text("${areaName}")`)).toBeVisible();
+
+    await page.goto('/month?month=2032-05');
+    await page.selectOption('[data-testid="area-filter-select"]', { label: areaName });
+    await expect(page).toHaveURL(/month=2032-05.*area=/);
+    await expect(page.getByText('Monthly Outcomes (0)')).toBeVisible();
+
+    // Create a monthly outcome in the isolated Area.
+    const monthGoal = `May Goal ${Date.now()}`;
+    const quickAdd = page.locator('[data-testid="quick-add-title"]');
+    await expect(quickAdd).toBeEnabled();
+    await quickAdd.fill(monthGoal);
+    await quickAdd.press('Enter');
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${monthGoal}")`)).toBeVisible();
+
+    // The same Area must be carried into the Year view so its two-item preview
+    // cannot be crowded out by data from other test runs.
+    const areaId = new URL(page.url()).searchParams.get('area');
+    expect(areaId).toBeTruthy();
+    await page.goto(`/year?year=2032&area=${areaId}`);
+    await expect(page).toHaveURL(/year=2032/);
+
+    // Find the May constituent month card and its real Item progress.
+    const mayCard = page.locator('a[href*="month=2032-05"]');
+    await expect(mayCard).toBeVisible();
+    await expect(mayCard).toContainText(monthGoal);
+    await expect(mayCard).toContainText('0%');
+  });
 });

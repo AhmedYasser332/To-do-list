@@ -15,6 +15,24 @@ export const AREA_PALETTE: AreaColorChoice[] = [
   { id: 'indigo', name: 'Muted Indigo', hex: '#4F5D75' },
 ];
 
+export interface AreaIconChoice {
+  id: string;
+  name: string;
+}
+
+export const AREA_ICONS: AreaIconChoice[] = [
+  { id: 'folder', name: 'Folder' },
+  { id: 'book', name: 'Study' },
+  { id: 'briefcase', name: 'Work' },
+  { id: 'dumbbell', name: 'Fitness' },
+  { id: 'heart', name: 'Personal' },
+  { id: 'home', name: 'Home' },
+];
+
+export function isValidAreaIcon(icon: string): boolean {
+  return AREA_ICONS.some((i) => i.id === icon);
+}
+
 /**
  * Returns a valid color string (hex) given an Area's color_token.
  * Defaults to the standard steel accent.

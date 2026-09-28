@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Plus, Clock, X, SlidersHorizontal } from 'lucide-react';
 import { createItem } from '@/app/(planner)/actions';
 import { Button } from '@/components/ui/button';
@@ -38,7 +39,13 @@ export function QuickAdd({
   const [showTime, setShowTime] = useState(false);
   const [time, setTime] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isDayHorizon = defaultHorizon === 'day';
   const hasAdvancedOptions = areas.length > 0 || candidateParents.length > 0 || isDayHorizon;
@@ -56,18 +63,21 @@ export function QuickAdd({
     }
   }, [parentId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || isPending) return;
+  const submitWithTitle = async (rawTitle: string, overrideTime?: string) => {
+    const cleanTitle = rawTitle.trim();
+    if (!cleanTitle || isPending) return;
+
+    const targetTime = overrideTime !== undefined ? overrideTime : time;
 
     setError(null);
-    startTransition(async () => {
+    setIsPending(true);
+    try {
       const res = await createItem({
-        title: title.trim(),
+        title: cleanTitle,
         horizon: defaultHorizon,
         periodStart: defaultPeriodStart,
         periodEnd: defaultPeriodEnd,
-        time: isDayHorizon && (showTime || time) && time ? time : null,
+        time: isDayHorizon && (showTime || targetTime) && targetTime ? targetTime : null,
         areaId: selectedAreaId || defaultAreaId || null,
         parentId: selectedParentId || parentId || null,
       });
@@ -80,8 +90,23 @@ export function QuickAdd({
         setShowTime(false);
         setShowOptions(false);
         onItemCreated?.();
+        router.refresh();
       }
-    });
+    } catch (err: any) {
+      setError(err.message || 'Failed to create item');
+    } finally {
+      setIsPending(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const inputEl = form?.elements?.namedItem('title') as HTMLInputElement | null;
+    const timeEl = form?.elements?.namedItem('time') as HTMLInputElement | null;
+    const resolvedTitle = (inputEl?.value || title).trim();
+    const resolvedTime = timeEl?.value !== undefined ? timeEl.value : time;
+    submitWithTitle(resolvedTitle, resolvedTime);
   };
 
   return (
@@ -90,17 +115,18 @@ export function QuickAdd({
         <Plus className="h-4 w-4 text-mutedText-light dark:text-mutedText-dark shrink-0" />
         <input
           type="text"
+          name="title"
           data-testid="quick-add-title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              handleSubmit(e);
+              submitWithTitle(e.currentTarget.value || title);
             }
           }}
           placeholder={placeholder}
-          disabled={isPending}
+          disabled={!mounted || isPending}
           className="flex-1 bg-transparent text-sm text-primaryText-light dark:text-primaryText-dark placeholder:text-mutedText-light focus:outline-none dark:placeholder:text-mutedText-dark"
         />
 
@@ -145,7 +171,7 @@ export function QuickAdd({
           type="submit"
           size="sm"
           data-testid="quick-add-submit-btn"
-          disabled={!title.trim() || isPending}
+          disabled={!mounted || !title.trim() || isPending}
           className="h-7 px-2.5 text-xs"
         >
           {isPending ? 'Adding...' : 'Add'}
@@ -204,6 +230,7 @@ export function QuickAdd({
               <span className="text-[11px] text-mutedText-light dark:text-mutedText-dark">Time:</span>
               <input
                 type="time"
+                name="time"
                 data-testid="quick-add-time-input"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}

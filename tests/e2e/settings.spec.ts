@@ -43,20 +43,22 @@ test.describe('Settings & Area Management (US6, US7)', () => {
     const areaName = `Study ${Date.now()}`;
     const updatedName = `${areaName} Advanced`;
 
-    // Create Area with color selection (T075)
+    // Create Area with color and icon selection (T075, Item 8)
     await page.fill('[data-testid="new-area-name-input"]', areaName);
     await page.locator('[data-testid="color-picker-sage-green"]').click();
+    await page.locator('[data-testid="icon-picker-book"]').click();
     await page.locator('[data-testid="add-area-btn"]').click();
 
     // Verify it appears in the areas list
     const areaRow = page.locator(`[data-testid="area-row"]:has-text("${areaName}")`);
     await expect(areaRow).toBeVisible();
 
-    // Edit Area name and change color
+    // Edit Area name, change color and icon
     await areaRow.locator('[data-testid="edit-area-btn"]').click();
     const editInput = page.locator('input[autoFocus], input.h-7').first();
     await editInput.fill(updatedName);
     await page.locator('[data-testid="edit-color-picker-warm-amber"]').click();
+    await page.locator('[data-testid="edit-icon-picker-dumbbell"]').click();
     await page.locator('[data-testid="save-area-btn"]').click();
 
     // Verify updated name appears

@@ -26,7 +26,7 @@ describe('Scheduling Invariants & Child Inheritance Integration Tests', () => {
 
     expect(signInError).toBeNull();
     userId = authData.user!.id;
-  }, 15000);
+  }, 45000);
 
   it('preserves existing Week, Month, and Year boundaries when updating non-scheduling fields', async () => {
     // 1. Create Week Item

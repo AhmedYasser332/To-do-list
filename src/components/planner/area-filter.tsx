@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { X, Filter } from 'lucide-react';
 import { getAreaColor } from '@/domain/areas';
+import { AreaIcon } from './area-icon';
 import type { AreaRow } from '@/types/domain';
 
 interface AreaFilterProps {
@@ -17,22 +18,45 @@ export function AreaFilter({ areas, activeAreaId }: AreaFilterProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const activeArea = areas.find((a) => a.id === activeAreaId);
+  const [selectedAreaId, setSelectedAreaId] = React.useState<string | null>(
+    searchParams.get('area') ?? activeAreaId ?? null
+  );
+
+  React.useEffect(() => {
+    setSelectedAreaId(searchParams.get('area') ?? activeAreaId ?? null);
+  }, [searchParams, activeAreaId]);
+
+  const activeArea = areas.find((a) => a.id === selectedAreaId);
+
+  const lastClearRef = React.useRef(0);
 
   const setArea = (areaId: string | null) => {
-    const params = new URLSearchParams(searchParams.toString());
+    setSelectedAreaId(areaId);
+    const currentSearch = typeof window !== 'undefined' ? window.location.search : searchParams.toString();
+    const params = new URLSearchParams(currentSearch);
     if (areaId) {
       params.set('area', areaId);
     } else {
       params.delete('area');
     }
     const query = params.toString();
-    const targetUrl = query ? `${pathname}?${query}` : pathname;
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : pathname;
+    const targetUrl = query ? `${currentPath}?${query}` : currentPath;
+    if (typeof window !== 'undefined') {
+      window.history.pushState(null, '', targetUrl);
+    }
     router.push(targetUrl);
-    router.refresh();
   };
 
-  if (!activeAreaId) {
+  const handleClear = (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    const now = Date.now();
+    if (now - lastClearRef.current < 300) return;
+    lastClearRef.current = now;
+    setArea(null);
+  };
+
+  if (!selectedAreaId) {
     if (areas.length === 0) return null;
 
     return (
@@ -61,15 +85,22 @@ export function AreaFilter({ areas, activeAreaId }: AreaFilterProps) {
         className="h-2 w-2 rounded-full shrink-0"
         style={{ backgroundColor: getAreaColor(activeArea?.color_token) }}
       />
-      <span className="font-medium">Area: {activeArea?.name || 'Selected'}</span>
-      <Link
-        href={pathname}
+      <span style={{ color: getAreaColor(activeArea?.color_token) }}>
+        <AreaIcon icon={activeArea?.icon} className="h-3 w-3 shrink-0" />
+      </span>
+      <span className="font-medium truncate max-w-[110px] sm:max-w-[200px]">
+        Area: {activeArea?.name || 'Selected'}
+      </span>
+      <button
+        type="button"
         data-testid="clear-area-filter"
-        className="rounded-full p-0.5 hover:bg-accent/20 transition-colors"
+        onClick={handleClear}
+        onTouchEnd={handleClear}
+        className="rounded-full p-1 min-w-[24px] min-h-[24px] inline-flex items-center justify-center hover:bg-accent/20 transition-colors cursor-pointer"
         title="Clear Area filter"
       >
-        <X className="h-3 w-3" />
-      </Link>
+        <X className="h-3.5 w-3.5 pointer-events-none" />
+      </button>
     </div>
   );
 }

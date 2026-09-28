@@ -85,10 +85,13 @@ export default async function YearPage({ searchParams }: YearPageProps) {
   for (let m = 1; m <= 12; m++) {
     const monthStr = `${year}-${String(m).padStart(2, '0')}`;
     const { start: mStart, end: mEnd } = getMonthBoundaries(year, m);
-    const mNodes = projectTreeForView(
+    let mNodes = projectTreeForView(
       fullTree,
       (i) => i.horizon === 'month' && i.period_start === mStart && i.period_end === mEnd
     );
+    if (activeAreaId) {
+      mNodes = filterTreeByArea(mNodes, activeAreaId);
+    }
     const label = new Date(year, m - 1, 1).toLocaleDateString('en-US', { month: 'short' });
     constituentMonths.push({
       monthStr,
@@ -111,7 +114,7 @@ export default async function YearPage({ searchParams }: YearPageProps) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center rounded border border-border-light bg-surface-light shadow-sm dark:border-border-dark dark:bg-surface-dark">
             <Link
               href={`/year?year=${year - 1}${activeAreaId ? `&area=${activeAreaId}` : ''}`}
@@ -201,12 +204,15 @@ export default async function YearPage({ searchParams }: YearPageProps) {
                     None &rarr;
                   </p>
                 ) : (
-                  cm.items.slice(0, 1).map((item) => (
+                  cm.items.slice(0, 2).map((item) => (
                     <div
                       key={item.id}
-                      className="text-[11px] truncate text-mutedText-light dark:text-mutedText-dark"
+                      className="text-[11px] flex items-center justify-between text-mutedText-light dark:text-mutedText-dark"
                     >
-                      &bull; {item.title}
+                      <span className="truncate flex-1">&bull; {item.title}</span>
+                      <span className="text-[10px] font-mono ml-1.5 shrink-0">
+                        {Math.round(item.progress || 0)}%
+                      </span>
                     </div>
                   ))
                 )}

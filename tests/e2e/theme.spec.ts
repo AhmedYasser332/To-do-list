@@ -47,7 +47,7 @@ test.describe('Theme System & Appearance (UAT Polish)', () => {
     // Verify app shell appearance in dark mode
     await page.goto('/today');
     await expect(page.locator('html')).toHaveClass(/dark/);
-    await expect(page.locator('[data-testid="quick-add-title"]')).toBeVisible();
+    await expect(page.locator('[data-testid="quick-add-title"]').first()).toBeVisible();
 
     // 2. Select Light
     await page.goto('/settings');

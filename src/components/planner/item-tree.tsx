@@ -1,7 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   DndContext,
   closestCenter,
@@ -91,18 +92,28 @@ export function ItemTree({
   onItemClick,
   onParentCompleteRequest,
 }: ItemTreeProps) {
-  const [items, setItems] = useState<ItemNode[]>(nodes);
+  const [prevNodes, setPrevNodes] = useState(nodes);
+  const [reorderedNodes, setReorderedNodes] = useState<ItemNode[] | null>(null);
+
+  if (prevNodes !== nodes) {
+    setPrevNodes(nodes);
+    setReorderedNodes(null);
+  }
+
+  const items = reorderedNodes || nodes;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    // Parents start collapsed by default per DESIGN.md Calm Utility guidelines.
+    // Only auto-expand contextual ancestor rows (shown when filtering by Area) so matching descendants are visible.
     const initial = new Set<string>();
-    const collect = (list: ItemNode[]) => {
+    const collectContextAncestors = (list: ItemNode[]) => {
       list.forEach((item) => {
-        if (item.children && item.children.length > 0) {
+        if ((item as any).isContextRow && item.children && item.children.length > 0) {
           initial.add(item.id);
-          collect(item.children);
+          collectContextAncestors(item.children);
         }
       });
     };
-    collect(nodes);
+    collectContextAncestors(nodes);
     return initial;
   });
 
@@ -110,11 +121,9 @@ export function ItemTree({
   const [childTitle, setChildTitle] = useState('');
   const [parentToResolve, setParentToResolve] = useState<ItemNode | null>(null);
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<ItemRowType | null>(null);
-  const [isPending, startTransition] = useTransition();
-
-  React.useEffect(() => {
-    setItems(nodes);
-  }, [nodes]);
+  const [isPending, setIsPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const router = useRouter();
 
   // Configure multi-input sensors for desktop mouse, mobile touch, and keyboard accessibility
   const sensors = useSensors(
@@ -147,23 +156,43 @@ export function ItemTree({
   };
 
   const handleStartAddChild = (parent: ItemRowType) => {
+    setActionError(null);
     setActiveChildParentId(parent.id);
     setChildTitle('');
     setExpandedIds((prev) => new Set(prev).add(parent.id));
   };
 
+  const submitChild = async (parentId: string, rawTitle: string) => {
+    const clean = rawTitle.trim();
+    if (!clean || isPending) return;
+
+    setExpandedIds((prev) => new Set(prev).add(parentId));
+    setActionError(null);
+    setIsPending(true);
+    try {
+      const res = await createChildItem(parentId, clean);
+      if (res?.error) {
+        setActionError(res.error);
+      } else {
+        setChildTitle('');
+        setActiveChildParentId(null);
+        router.refresh();
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to add subtask. Try again.');
+    } finally {
+      setExpandedIds((prev) => new Set(prev).add(parentId));
+      setIsPending(false);
+    }
+  };
+
   const handleCreateChild = (e: React.FormEvent, parentId: string) => {
     e.preventDefault();
-    if (!childTitle.trim() || isPending) return;
-
-    startTransition(async () => {
-      await createChildItem(parentId, childTitle.trim());
-      setChildTitle('');
-      setActiveChildParentId(null);
-    });
+    submitChild(parentId, childTitle);
   };
 
   const handleParentComplete = (parent: ItemNode) => {
+    setActionError(null);
     if (onParentCompleteRequest) {
       onParentCompleteRequest(parent);
     } else {
@@ -171,16 +200,29 @@ export function ItemTree({
     }
   };
 
-  const handleResolve = (mode: 'parent_only' | 'all_descendants') => {
-    if (!parentToResolve) return;
-    startTransition(async () => {
-      await resolveParentCompletion(parentToResolve.id, mode);
+  const handleResolve = async (mode: 'parent_only' | 'all_descendants') => {
+    if (!parentToResolve || isPending) return;
+    setActionError(null);
+    setIsPending(true);
+    try {
+      const res = await resolveParentCompletion(parentToResolve.id, mode);
+      if (res?.error) {
+        setActionError(res.error);
+        router.refresh();
+        return;
+      }
       setParentToResolve(null);
-    });
+      router.refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not complete parent. Try again.');
+    } finally {
+      setIsPending(false);
+    }
   };
 
   // Same-parent nested sibling reordering (T080)
   const handleDragEnd = (event: DragEndEvent) => {
+    if (isPending) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -203,17 +245,30 @@ export function ItemTree({
         activeInfo.parentNode?.id || null,
         reorderedSiblings
       );
-      setItems(updatedTree);
+      setReorderedNodes(updatedTree);
 
       // Persist sequential sort_orders via server action
-      startTransition(async () => {
-        await reorderItems(
-          reorderedSiblings.map((item) => ({
-            id: item.id,
-            sort_order: item.sort_order,
-          }))
-        );
-      });
+      setActionError(null);
+      setIsPending(true);
+      reorderItems(
+        reorderedSiblings.map((item) => ({
+          id: item.id,
+          sort_order: item.sort_order,
+        }))
+      )
+        .then((res) => {
+          if (res?.error) {
+            setActionError(res.error);
+            setReorderedNodes(null);
+          }
+          router.refresh();
+        })
+        .catch((err) => {
+          setActionError(err instanceof Error ? err.message : 'Could not save order. Try again.');
+          setReorderedNodes(null);
+          router.refresh();
+        })
+        .finally(() => setIsPending(false));
     }
   };
 
@@ -263,15 +318,20 @@ export function ItemTree({
                 value={childTitle}
                 onChange={(e) => setChildTitle(e.target.value)}
                 placeholder="New subtask title... (press Enter)"
-                disabled={isPending}
                 className="flex-1 bg-transparent text-xs text-primaryText-light dark:text-primaryText-dark placeholder:text-mutedText-light dark:placeholder:text-mutedText-dark focus:outline-none"
                 onKeyDown={(e) => {
-                  if (e.key === 'Escape') {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitChild(node.id, e.currentTarget.value || childTitle);
+                  } else if (e.key === 'Escape') {
                     setActiveChildParentId(null);
                     setChildTitle('');
                   }
                 }}
               />
+              <button type="submit" className="sr-only" tabIndex={-1} aria-hidden="true">
+                Add
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -339,6 +399,11 @@ export function ItemTree({
 
   return (
     <>
+      {actionError && (
+        <p role="alert" className="mb-2 rounded border border-red-300/50 p-2 text-xs text-red-700 dark:text-red-300">
+          {actionError}
+        </p>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -358,6 +423,7 @@ export function ItemTree({
       <CompletionDialog
         parent={parentToResolve}
         open={Boolean(parentToResolve)}
+        error={actionError}
         onOpenChange={(open) => !open && setParentToResolve(null)}
         onResolve={handleResolve}
       />

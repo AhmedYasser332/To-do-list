@@ -14,6 +14,7 @@ import type { ItemNode } from '@/types/domain';
 interface CompletionDialogProps {
   parent: ItemNode | null;
   open: boolean;
+  error?: string | null;
   onOpenChange: (open: boolean) => void;
   onResolve: (mode: 'parent_only' | 'all_descendants') => void;
 }
@@ -21,6 +22,7 @@ interface CompletionDialogProps {
 export function CompletionDialog({
   parent,
   open,
+  error,
   onOpenChange,
   onResolve,
 }: CompletionDialogProps) {
@@ -38,6 +40,12 @@ export function CompletionDialog({
             contains incomplete subtasks. Choose how to mark it complete:
           </DialogDescription>
         </DialogHeader>
+
+        {error && (
+          <p role="alert" className="text-xs text-red-700 dark:text-red-300">
+            {error}
+          </p>
+        )}
 
         <div className="flex flex-col gap-2 pt-2">
           <Button
