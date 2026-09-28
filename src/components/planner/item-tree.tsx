@@ -122,6 +122,7 @@ export function ItemTree({
   const [parentToResolve, setParentToResolve] = useState<ItemNode | null>(null);
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<ItemRowType | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const router = useRouter();
 
   // Configure multi-input sensors for desktop mouse, mobile touch, and keyboard accessibility
@@ -155,6 +156,7 @@ export function ItemTree({
   };
 
   const handleStartAddChild = (parent: ItemRowType) => {
+    setActionError(null);
     setActiveChildParentId(parent.id);
     setChildTitle('');
     setExpandedIds((prev) => new Set(prev).add(parent.id));
@@ -165,19 +167,20 @@ export function ItemTree({
     if (!clean || isPending) return;
 
     setExpandedIds((prev) => new Set(prev).add(parentId));
+    setActionError(null);
     setIsPending(true);
     try {
       const res = await createChildItem(parentId, clean);
       if (res?.error) {
-        console.error(res.error);
+        setActionError(res.error);
       } else {
+        setChildTitle('');
+        setActiveChildParentId(null);
         router.refresh();
       }
     } catch (err) {
-      console.error(err);
+      setActionError(err instanceof Error ? err.message : 'Failed to add subtask. Try again.');
     } finally {
-      setChildTitle('');
-      setActiveChildParentId(null);
       setExpandedIds((prev) => new Set(prev).add(parentId));
       setIsPending(false);
     }
@@ -189,6 +192,7 @@ export function ItemTree({
   };
 
   const handleParentComplete = (parent: ItemNode) => {
+    setActionError(null);
     if (onParentCompleteRequest) {
       onParentCompleteRequest(parent);
     } else {
@@ -198,13 +202,19 @@ export function ItemTree({
 
   const handleResolve = async (mode: 'parent_only' | 'all_descendants') => {
     if (!parentToResolve || isPending) return;
+    setActionError(null);
     setIsPending(true);
     try {
-      await resolveParentCompletion(parentToResolve.id, mode);
+      const res = await resolveParentCompletion(parentToResolve.id, mode);
+      if (res?.error) {
+        setActionError(res.error);
+        router.refresh();
+        return;
+      }
       setParentToResolve(null);
       router.refresh();
     } catch (err) {
-      console.error(err);
+      setActionError(err instanceof Error ? err.message : 'Could not complete parent. Try again.');
     } finally {
       setIsPending(false);
     }
@@ -212,6 +222,7 @@ export function ItemTree({
 
   // Same-parent nested sibling reordering (T080)
   const handleDragEnd = (event: DragEndEvent) => {
+    if (isPending) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
@@ -237,6 +248,7 @@ export function ItemTree({
       setReorderedNodes(updatedTree);
 
       // Persist sequential sort_orders via server action
+      setActionError(null);
       setIsPending(true);
       reorderItems(
         reorderedSiblings.map((item) => ({
@@ -244,7 +256,18 @@ export function ItemTree({
           sort_order: item.sort_order,
         }))
       )
-        .then(() => router.refresh())
+        .then((res) => {
+          if (res?.error) {
+            setActionError(res.error);
+            setReorderedNodes(null);
+          }
+          router.refresh();
+        })
+        .catch((err) => {
+          setActionError(err instanceof Error ? err.message : 'Could not save order. Try again.');
+          setReorderedNodes(null);
+          router.refresh();
+        })
         .finally(() => setIsPending(false));
     }
   };
@@ -376,6 +399,11 @@ export function ItemTree({
 
   return (
     <>
+      {actionError && (
+        <p role="alert" className="mb-2 rounded border border-red-300/50 p-2 text-xs text-red-700 dark:text-red-300">
+          {actionError}
+        </p>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -395,6 +423,7 @@ export function ItemTree({
       <CompletionDialog
         parent={parentToResolve}
         open={Boolean(parentToResolve)}
+        error={actionError}
         onOpenChange={(open) => !open && setParentToResolve(null)}
         onResolve={handleResolve}
       />

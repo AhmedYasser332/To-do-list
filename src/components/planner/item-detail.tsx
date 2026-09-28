@@ -461,7 +461,7 @@ export function ItemDetail({
                   data-testid="detail-weight"
                   type="number"
                   min="0.1"
-                  step="0.5"
+                  step="any"
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
                   disabled={isPending}

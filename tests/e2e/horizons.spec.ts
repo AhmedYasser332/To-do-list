@@ -82,26 +82,20 @@ test.describe('Horizons Navigation & Period Quick Add (US7)', () => {
   });
 
   test('Year view exposes Month Item tree progress in constituent month card', async ({ page }) => {
-    // 1. Go to Month view for an isolated period and clean any Month Items
-    // left there by previous runs, so the year card shows only this run's item
-    const staleRows = page.locator('[data-testid="item-row"]');
-    for (let i = 0; i < 10; i++) {
-      // Fresh server-rendered pass each loop avoids racing the post-delete refresh
-      await page.goto('/month?month=2032-05');
-      await expect(page).toHaveURL(/month=2032-05/);
-      if ((await staleRows.count()) === 0) break;
-      await staleRows.first().click();
-      const drawer = page.locator('[data-testid="item-detail-drawer"]');
-      await expect(drawer).toBeVisible();
-      await page.locator('[data-testid="detail-delete-btn"]').click();
-      const confirmBtn = page.locator('[data-testid="confirm-delete-btn"]');
-      if (await confirmBtn.isVisible().catch(() => false)) {
-        await confirmBtn.click();
-      }
-      await expect(drawer).not.toBeVisible();
-    }
+    // Isolate this run with its own Area rather than deleting other items in
+    // a fixed month. This also keeps repeated runs independent of prior data.
+    const areaName = `Year Progress Area ${Date.now()}`;
+    await page.goto('/settings');
+    await page.fill('[data-testid="new-area-name-input"]', areaName);
+    await page.locator('[data-testid="add-area-btn"]').click();
+    await expect(page.locator(`[data-testid="area-row"]:has-text("${areaName}")`)).toBeVisible();
 
-    // 2. Create a monthly outcome
+    await page.goto('/month?month=2032-05');
+    await page.selectOption('[data-testid="area-filter-select"]', { label: areaName });
+    await expect(page).toHaveURL(/month=2032-05.*area=/);
+    await expect(page.getByText('Monthly Outcomes (0)')).toBeVisible();
+
+    // Create a monthly outcome in the isolated Area.
     const monthGoal = `May Goal ${Date.now()}`;
     const quickAdd = page.locator('[data-testid="quick-add-title"]');
     await expect(quickAdd).toBeEnabled();
@@ -109,11 +103,14 @@ test.describe('Horizons Navigation & Period Quick Add (US7)', () => {
     await quickAdd.press('Enter');
     await expect(page.locator(`[data-testid="item-row"]:has-text("${monthGoal}")`)).toBeVisible();
 
-    // 3. Go to Year view for 2032
-    await page.goto('/year?year=2032');
+    // The same Area must be carried into the Year view so its two-item preview
+    // cannot be crowded out by data from other test runs.
+    const areaId = new URL(page.url()).searchParams.get('area');
+    expect(areaId).toBeTruthy();
+    await page.goto(`/year?year=2032&area=${areaId}`);
     await expect(page).toHaveURL(/year=2032/);
 
-    // 4. Find the May constituent month card
+    // Find the May constituent month card and its real Item progress.
     const mayCard = page.locator('a[href*="month=2032-05"]');
     await expect(mayCard).toBeVisible();
     await expect(mayCard).toContainText(monthGoal);

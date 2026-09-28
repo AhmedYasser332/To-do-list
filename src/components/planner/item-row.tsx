@@ -40,6 +40,7 @@ export function ItemRow({
   onParentCompleteRequest,
 }: ItemRowProps) {
   const [isPending, startTransition] = useTransition();
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   const [optimisticStatus, setOptimisticStatus] = React.useOptimistic(
     item.status,
@@ -57,19 +58,24 @@ export function ItemRow({
   const lastToggleRef = React.useRef(0);
 
   const performToggle = () => {
+    if (isPending) return;
     const now = Date.now();
     if (now - lastToggleRef.current < 400) return;
     lastToggleRef.current = now;
+    setActionError(null);
 
     // If unchecking a completed parent
     if (isComplete) {
       startTransition(async () => {
         setOptimisticStatus('incomplete');
         setOptimisticManual(false);
-        if (item.is_manually_completed) {
-          await reopenParent(item.id);
-        } else {
-          await toggleItemCompletion(item.id, item.status);
+        try {
+          const result = item.is_manually_completed
+            ? await reopenParent(item.id)
+            : await toggleItemCompletion(item.id, item.status);
+          if (result?.error) setActionError(result.error);
+        } catch (err) {
+          setActionError(err instanceof Error ? err.message : 'Could not update item.');
         }
       });
       return;
@@ -85,7 +91,12 @@ export function ItemRow({
 
     startTransition(async () => {
       setOptimisticStatus('complete');
-      await toggleItemCompletion(item.id, item.status);
+      try {
+        const result = await toggleItemCompletion(item.id, item.status);
+        if (result?.error) setActionError(result.error);
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : 'Could not update item.');
+      }
     });
   };
 
@@ -177,6 +188,11 @@ export function ItemRow({
         {optimisticManual && (
           <span className="rounded bg-accent/10 text-accent px-1.5 py-0.2 text-[10px] font-medium">
             Manual
+          </span>
+        )}
+        {actionError && (
+          <span role="alert" title={actionError} className="max-w-[170px] truncate text-[11px] text-red-700 dark:text-red-300">
+            {actionError}
           </span>
         )}
       </div>

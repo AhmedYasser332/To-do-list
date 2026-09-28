@@ -137,16 +137,17 @@ test.describe('Today View & Quick Add Flow (US1)', () => {
     await expect(drawer).toBeVisible();
     await drawer.locator('select').first().selectOption('week');
     await page.click('[data-testid="detail-save-btn"]');
+    await expect(page.locator('[data-testid="detail-save-btn"]')).toBeEnabled();
     await page.click('[data-testid="detail-close-btn"]');
     await expect(drawer).not.toBeVisible();
 
-    // Today's Planning Context searches the full hierarchy:
-    // a Week item nested under a Day parent still counts toward This Week
-    await expect(page.getByText(/This Week \([1-9]\d*\)/)).toBeVisible();
-
-    // Matching Area keeps the context entry
+    // Match only this test's Area so other tests' week items cannot disguise
+    // a failed save. The Week item remains nested under the Day parent.
     await page.selectOption('[data-testid="area-filter-select"]', { label: areaA });
-    await expect(page.getByText(/This Week \([1-9]\d*\)/)).toBeVisible();
+    await expect(page.getByText('This Week (1)')).toBeVisible();
+    // The nested Week item is planning context, not an extra Day task.
+    await expect(page.locator('[data-testid="today-completion-summary"]'))
+      .toContainText('0 of 1 completed (0%)');
 
     // Non-matching Area removes the whole subtree from Today
     await page.locator('[data-testid="clear-area-filter"]').click();

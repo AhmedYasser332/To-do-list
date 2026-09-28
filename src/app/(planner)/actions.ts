@@ -5,12 +5,14 @@ import { revalidatePath } from 'next/cache';
 import { wouldCreateCycle, determineChildScheduling, getDescendants } from '@/domain/hierarchy';
 import type { Horizon, ItemStatus } from '@/types/domain';
 
-function revalidatePlanner(horizon?: Horizon | string) {
+function revalidatePlanner() {
   revalidatePath('/today');
-  if (horizon === 'week') revalidatePath('/week');
-  else if (horizon === 'month') revalidatePath('/month');
-  else if (horizon === 'year') revalidatePath('/year');
-  else if (horizon === 'inbox') revalidatePath('/inbox');
+  // An Item's descendants may belong to any horizon, so a mutation can affect
+  // progress and contextual summaries on every planner page.
+  revalidatePath('/week');
+  revalidatePath('/month');
+  revalidatePath('/year');
+  revalidatePath('/inbox');
 }
 
 export async function getAuthenticatedUserId(): Promise<string> {
@@ -210,7 +212,9 @@ export async function resolveParentCompletion(
         is_manually_completed: true,
       })
       .eq('id', parentId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select('id')
+      .single();
 
     if (error) return { error: error.message };
   } else if (mode === 'all_descendants') {
@@ -223,7 +227,9 @@ export async function resolveParentCompletion(
         is_manually_completed: false,
       })
       .eq('id', parentId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select('id')
+      .single();
 
     if (parentError) return { error: parentError.message };
 
@@ -256,7 +262,7 @@ export async function resolveParentCompletion(
       }
 
       if (descendantIds.length > 0) {
-        const { error: descError } = await supabase
+        const { data: updatedDescendants, error: descError } = await supabase
           .from('items')
           .update({
             status: 'complete',
@@ -264,9 +270,13 @@ export async function resolveParentCompletion(
             is_manually_completed: false,
           })
           .in('id', descendantIds)
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .select('id');
 
         if (descError) return { error: descError.message };
+        if (updatedDescendants?.length !== descendantIds.length) {
+          return { error: 'Could not update all descendants. Please retry.' };
+        }
       }
     }
   }
@@ -455,12 +465,17 @@ export async function updateItemDetails(
 
   // 1. Cycle Prevention: if parentId is being changed, verify no ancestor loop is created
   if (updates.parentId !== undefined && updates.parentId !== currentItem.parent_id) {
-    const { data: allItems } = await supabase
+    const { data: allItems, error: itemsError } = await supabase
       .from('items')
       .select('*')
       .eq('user_id', userId);
 
-    if (allItems && wouldCreateCycle(allItems, itemId, updates.parentId)) {
+    if (itemsError || !allItems) return { error: 'Could not verify the new parent.' };
+    if (updates.parentId && !allItems.some((i) => i.id === updates.parentId)) {
+      return { error: 'Parent item not found.' };
+    }
+
+    if (wouldCreateCycle(allItems, itemId, updates.parentId)) {
       return { error: 'Cannot set parent: this would create a circular hierarchy.' };
     }
   }
@@ -468,19 +483,20 @@ export async function updateItemDetails(
   // 2. Completion Backdoor Prevention:
   // Marking a parent with incomplete descendants directly complete must route through the 3-option completion dialog
   if (updates.status === 'complete' && currentItem.status !== 'complete') {
-    const { data: allUserItems } = await supabase
+    const { data: allUserItems, error: itemsError } = await supabase
       .from('items')
       .select('id, parent_id, status')
       .eq('user_id', userId);
 
-    if (allUserItems) {
-      const descendants = getDescendants(allUserItems as any, itemId);
-      const hasIncompleteDescendants = descendants.some((d) => d.status === 'incomplete');
-      if (hasIncompleteDescendants) {
-        return {
-          error: 'Cannot mark parent complete directly while subtasks remain incomplete. Please use the completion prompt.',
-        };
-      }
+    if (itemsError || !allUserItems) return { error: 'Could not verify subtask completion.' };
+    const descendants = getDescendants(allUserItems as any, itemId);
+    const hasIncompleteDescendants = descendants.some(
+      (d) => d.status !== 'complete' && d.status !== 'cancelled'
+    );
+    if (hasIncompleteDescendants) {
+      return {
+        error: 'Cannot mark parent complete directly while subtasks remain incomplete. Please use the completion prompt.',
+      };
     }
   }
 
@@ -537,7 +553,9 @@ export async function reorderItems(reorderedItems: { id: string; sort_order: num
       .from('items')
       .update({ sort_order: item.sort_order })
       .eq('id', item.id)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select('id')
+      .single();
 
     if (error) {
       return { error: error.message };

@@ -90,7 +90,7 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
   function collectDayItems(nodes: ItemNode[]): ItemNode[] {
     const list: ItemNode[] = [];
     for (const node of nodes) {
-      if (!(node as any).isContextRow) {
+      if (!(node as any).isContextRow && node.horizon === 'day' && node.period_start === todayDateStr) {
         list.push(node);
       }
       if (node.children && node.children.length > 0) {
