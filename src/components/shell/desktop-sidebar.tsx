@@ -16,6 +16,7 @@ import {
 import { signOut } from '@/app/(auth)/actions';
 import { cn } from '@/lib/utils';
 import { getAreaColor } from '@/domain/areas';
+import { AreaIcon } from '@/components/planner/area-icon';
 import type { AreaRow } from '@/types/domain';
 
 interface DesktopSidebarProps {
@@ -37,7 +38,7 @@ export function DesktopSidebar({ areas = [] }: DesktopSidebarProps) {
 
   return (
     <aside className="hidden md:flex w-56 flex-col justify-between border-r border-border-light bg-surface-light p-3 dark:border-border-dark dark:bg-[#202020] select-none shrink-0 h-screen sticky top-0">
-      <div className="space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
         {/* Header / Brand */}
         <div className="px-2 py-1.5 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-mutedText-light dark:text-mutedText-dark">
@@ -90,10 +91,14 @@ export function DesktopSidebar({ areas = [] }: DesktopSidebarProps) {
             ) : (
               areas.map((area) => {
                 const isAreaActive = activeAreaId === area.id;
+                const areaParams = new URLSearchParams(searchParams.toString());
+                areaParams.set('area', area.id);
+                const areaHref = `${pathname}?${areaParams.toString()}`;
+
                 return (
                   <Link
                     key={area.id}
-                    href={`${pathname}?area=${area.id}`}
+                    href={areaHref}
                     className={cn(
                       'flex items-center gap-2.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors',
                       isAreaActive
@@ -105,6 +110,9 @@ export function DesktopSidebar({ areas = [] }: DesktopSidebarProps) {
                       className="h-2 w-2 rounded-full shrink-0"
                       style={{ backgroundColor: getAreaColor(area.color_token) }}
                     />
+                    <span style={{ color: getAreaColor(area.color_token) }}>
+                      <AreaIcon icon={area.icon} className="h-3.5 w-3.5 shrink-0" />
+                    </span>
                     <span className="truncate">{area.name}</span>
                   </Link>
                 );

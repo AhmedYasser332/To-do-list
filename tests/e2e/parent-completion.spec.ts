@@ -7,6 +7,7 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     await page.fill('input[type="password"]', process.env.OWNER_PASSWORD || 'password123');
     await page.click('button[type="submit"]');
     await expect(page).toHaveURL(/\/today/);
+    await expect(page.locator('h1')).toHaveText('Today');
   });
 
   test('completes parent only: sets parent 100% with manual badge while children stay incomplete', async ({ page }) => {
@@ -14,17 +15,25 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     const childTitle = `Subtask A ${Date.now()}`;
 
     // Create parent on Today
-    await page.fill('[data-testid="quick-add-title"]', parentTitle);
-    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+    const quickAddInput = page.locator('[data-testid="quick-add-title"]');
+    await expect(quickAddInput).toBeEnabled();
+    await quickAddInput.fill(parentTitle);
+    const submitBtn = page.locator('[data-testid="quick-add-submit-btn"]');
+    await expect(submitBtn).toBeEnabled();
+    await submitBtn.click();
 
     const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
     await expect(parentRow).toBeVisible();
 
     // Add child
     await parentRow.hover().catch(() => {});
-    await parentRow.locator('[data-testid="add-subtask-btn"]').click();
-    await page.fill('[data-testid="inline-child-input"]', childTitle);
-    await page.locator('[data-testid="inline-child-input"]').press('Enter');
+    const addSubtaskBtn = parentRow.locator('[data-testid="add-subtask-btn"]');
+    await expect(addSubtaskBtn).toBeVisible();
+    await addSubtaskBtn.click();
+    const childInput = page.locator('[data-testid="inline-child-input"]');
+    await expect(childInput).toBeVisible();
+    await childInput.fill(childTitle);
+    await childInput.press('Enter');
 
     const childRow = page.locator(`[data-testid="item-row"]:has-text("${childTitle}")`);
     await expect(childRow).toBeVisible();
@@ -50,6 +59,7 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     await expect(childRow.locator('[role="checkbox"]')).toHaveAttribute('data-state', 'unchecked');
 
     // Reopen parent
+    await page.waitForTimeout(500);
     const parentCheckbox = parentRow.locator('[role="checkbox"]');
     await expect(parentCheckbox).toBeEnabled();
     await parentCheckbox.click();
@@ -62,25 +72,35 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     const childTitle = `Full Subtask ${Date.now()}`;
 
     // Create parent and child
-    await page.fill('[data-testid="quick-add-title"]', parentTitle);
-    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+    const quickAddInput = page.locator('[data-testid="quick-add-title"]');
+    await expect(quickAddInput).toBeEnabled();
+    await quickAddInput.fill(parentTitle);
+    const submitBtn = page.locator('[data-testid="quick-add-submit-btn"]');
+    await expect(submitBtn).toBeEnabled();
+    await submitBtn.click();
 
     const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
     await expect(parentRow).toBeVisible();
     await parentRow.hover().catch(() => {});
-    await parentRow.locator('[data-testid="add-subtask-btn"]').click();
-    await page.fill('[data-testid="inline-child-input"]', childTitle);
-    await page.locator('[data-testid="inline-child-input"]').press('Enter');
+    const addSubtaskBtn = parentRow.locator('[data-testid="add-subtask-btn"]');
+    await expect(addSubtaskBtn).toBeVisible();
+    await addSubtaskBtn.click();
+    const childInput = page.locator('[data-testid="inline-child-input"]');
+    await expect(childInput).toBeVisible();
+    await childInput.fill(childTitle);
+    await childInput.press('Enter');
 
     const childRow = page.locator(`[data-testid="item-row"]:has-text("${childTitle}")`);
     await expect(childRow).toBeVisible();
 
     // Click parent checkbox
     await parentRow.locator('[role="checkbox"]').click();
-    await expect(page.locator('[data-testid="completion-dialog"]')).toBeVisible();
+    const dialog = page.locator('[data-testid="completion-dialog"]');
+    await expect(dialog).toBeVisible();
 
     // Select "Complete parent and all descendants"
     await page.click('[data-testid="complete-all-descendants-btn"]');
+    await expect(dialog).not.toBeVisible();
 
     // Both should be checked
     await expect(parentRow.locator('[role="checkbox"]')).toHaveAttribute('data-state', 'checked');
@@ -92,15 +112,23 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     const childTitle = `Cancel Subtask ${Date.now()}`;
 
     // Create parent and child
-    await page.fill('[data-testid="quick-add-title"]', parentTitle);
-    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+    const quickAddInput = page.locator('[data-testid="quick-add-title"]');
+    await expect(quickAddInput).toBeEnabled();
+    await quickAddInput.fill(parentTitle);
+    const submitBtn = page.locator('[data-testid="quick-add-submit-btn"]');
+    await expect(submitBtn).toBeEnabled();
+    await submitBtn.click();
 
     const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
     await expect(parentRow).toBeVisible();
     await parentRow.hover().catch(() => {});
-    await parentRow.locator('[data-testid="add-subtask-btn"]').click();
-    await page.fill('[data-testid="inline-child-input"]', childTitle);
-    await page.locator('[data-testid="inline-child-input"]').press('Enter');
+    const addSubtaskBtn = parentRow.locator('[data-testid="add-subtask-btn"]');
+    await expect(addSubtaskBtn).toBeVisible();
+    await addSubtaskBtn.click();
+    const childInput = page.locator('[data-testid="inline-child-input"]');
+    await expect(childInput).toBeVisible();
+    await childInput.fill(childTitle);
+    await childInput.press('Enter');
 
     const childRow = page.locator(`[data-testid="item-row"]:has-text("${childTitle}")`);
     await expect(childRow).toBeVisible();
@@ -125,22 +153,36 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     const grandchildTitle = `Deep Grandchild ${Date.now()}`;
 
     // 1. Create parent
-    await page.fill('[data-testid="quick-add-title"]', parentTitle);
-    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+    const quickAddInput = page.locator('[data-testid="quick-add-title"]');
+    await expect(quickAddInput).toBeEnabled();
+    await quickAddInput.fill(parentTitle);
+    const submitBtn = page.locator('[data-testid="quick-add-submit-btn"]');
+    await expect(submitBtn).toBeEnabled();
+    await submitBtn.click();
     const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
     await expect(parentRow).toBeVisible();
 
     // 2. Add middle child
-    await parentRow.locator('[data-testid="add-subtask-btn"]').click();
-    await page.fill('[data-testid="inline-child-input"]', childTitle);
-    await page.locator('[data-testid="inline-child-input"]').press('Enter');
+    await parentRow.hover().catch(() => {});
+    const addSubtaskBtn = parentRow.locator('[data-testid="add-subtask-btn"]');
+    await expect(addSubtaskBtn).toBeVisible();
+    await addSubtaskBtn.click();
+    const childInput = page.locator('[data-testid="inline-child-input"]');
+    await expect(childInput).toBeVisible();
+    await childInput.fill(childTitle);
+    await childInput.press('Enter');
     const childRow = page.locator(`[data-testid="item-row"]:has-text("${childTitle}")`);
     await expect(childRow).toBeVisible();
 
     // 3. Add deep grandchild under middle child
-    await childRow.locator('[data-testid="add-subtask-btn"]').click();
-    await page.fill('[data-testid="inline-child-input"]', grandchildTitle);
-    await page.locator('[data-testid="inline-child-input"]').press('Enter');
+    await childRow.hover().catch(() => {});
+    const addGrandchildBtn = childRow.locator('[data-testid="add-subtask-btn"]');
+    await expect(addGrandchildBtn).toBeVisible();
+    await addGrandchildBtn.click();
+    const grandchildInput = page.locator('[data-testid="inline-child-input"]');
+    await expect(grandchildInput).toBeVisible();
+    await grandchildInput.fill(grandchildTitle);
+    await grandchildInput.press('Enter');
     await expect(page.locator(`[data-testid="item-row"]:has-text("${grandchildTitle}")`)).toBeVisible();
 
     // 4. Mark middle child complete directly: triggers 3-option dialog because grandchild is incomplete
@@ -150,6 +192,9 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     await page.click('[data-testid="complete-parent-only-btn"]'); // Child is complete manually, grandchild incomplete
     await expect(dialog).not.toBeVisible();
     await expect(childRow).toContainText('Manual');
+
+    // Wait past debounce window (400ms) before clicking Grandparent checkbox
+    await page.waitForTimeout(600);
 
     // 5. Now try to complete Grandparent: direct child is complete, but deep grandchild is incomplete!
     await parentRow.locator('[role="checkbox"]').click();
@@ -161,6 +206,6 @@ test.describe('Direct Parent Completion with Descendant Resolution (US5)', () =>
     await expect(dialog).not.toBeVisible();
     await expect(parentRow.locator('[role="checkbox"]')).toHaveAttribute('data-state', 'checked');
     await expect(childRow.locator('[role="checkbox"]')).toHaveAttribute('data-state', 'checked');
-    await expect(childRow.locator('[role="checkbox"]')).toHaveAttribute('data-state', 'checked');
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${grandchildTitle}")`).locator('[role="checkbox"]')).toHaveAttribute('data-state', 'checked');
   });
 });

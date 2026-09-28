@@ -5,6 +5,7 @@ import { useTransition } from 'react';
 import { ChevronRight, ChevronDown, Plus, Clock, Check } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toggleItemCompletion, reopenParent } from '@/app/(planner)/actions';
+import { getAreaColor } from '@/domain/areas';
 import { cn } from '@/lib/utils';
 import type { ItemNode, AreaRow, ItemRow as ItemRowType } from '@/types/domain';
 
@@ -40,7 +41,16 @@ export function ItemRow({
 }: ItemRowProps) {
   const [isPending, startTransition] = useTransition();
 
-  const isComplete = item.status === 'complete';
+  const [optimisticStatus, setOptimisticStatus] = React.useOptimistic(
+    item.status,
+    (_current, next: import('@/types/domain').ItemStatus) => next
+  );
+  const [optimisticManual, setOptimisticManual] = React.useOptimistic(
+    item.is_manually_completed,
+    (_current, next: boolean) => next
+  );
+
+  const isComplete = optimisticStatus === 'complete';
   const hasChildren = item.children && item.children.length > 0;
   const area = areas.find((a) => a.id === item.area_id);
 
@@ -54,6 +64,8 @@ export function ItemRow({
     // If unchecking a completed parent
     if (isComplete) {
       startTransition(async () => {
+        setOptimisticStatus('incomplete');
+        setOptimisticManual(false);
         if (item.is_manually_completed) {
           await reopenParent(item.id);
         } else {
@@ -72,6 +84,7 @@ export function ItemRow({
     }
 
     startTransition(async () => {
+      setOptimisticStatus('complete');
       await toggleItemCompletion(item.id, item.status);
     });
   };
@@ -125,7 +138,7 @@ export function ItemRow({
         <div className="flex items-center shrink-0" onClick={(e) => e.stopPropagation()}>
           <Checkbox
             checked={isComplete}
-            disabled={isPending || isContextRow}
+            disabled={isContextRow}
             onClick={handleCheckboxClick}
             onCheckedChange={handleCheckedChange}
           />
@@ -154,14 +167,14 @@ export function ItemRow({
           <span className="flex items-center gap-1 text-[11px] text-mutedText-light dark:text-mutedText-dark shrink-0">
             <span
               className="h-1.5 w-1.5 rounded-full shrink-0"
-              style={{ backgroundColor: area.color_token || 'var(--accent)' }}
+              style={{ backgroundColor: getAreaColor(area.color_token) }}
             />
             <span className="truncate max-w-[80px]">{area.name}</span>
           </span>
         )}
 
         {/* Manual completion badge */}
-        {item.is_manually_completed && (
+        {optimisticManual && (
           <span className="rounded bg-accent/10 text-accent px-1.5 py-0.2 text-[10px] font-medium">
             Manual
           </span>

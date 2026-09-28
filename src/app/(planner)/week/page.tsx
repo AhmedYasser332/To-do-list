@@ -131,7 +131,7 @@ export default async function WeekPage({ searchParams }: WeekPageProps) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center rounded border border-border-light bg-surface-light shadow-sm dark:border-border-dark dark:bg-surface-dark">
             <Link
               href={`/week?date=${prevWeekDate}${activeAreaId ? `&area=${activeAreaId}` : ''}`}

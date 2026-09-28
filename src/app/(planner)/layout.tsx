@@ -5,6 +5,8 @@ import { DesktopSidebar } from '@/components/shell/desktop-sidebar';
 import { MobileNav } from '@/components/shell/mobile-nav';
 import type { AreaRow } from '@/types/domain';
 
+export const dynamic = 'force-dynamic';
+
 export default async function PlannerLayout({
   children,
 }: {

@@ -80,4 +80,26 @@ test.describe('Horizons Navigation & Period Quick Add (US7)', () => {
       await expect(page).toHaveURL(/\/week/);
     }
   });
+
+  test('Year view exposes Month Item tree progress in constituent month card', async ({ page }) => {
+    // 1. Go to Month view for an isolated period and create a monthly outcome
+    await page.goto('/month?month=2032-05');
+    await expect(page).toHaveURL(/month=2032-05/);
+    const monthGoal = `May Goal ${Date.now()}`;
+    const quickAdd = page.locator('[data-testid="quick-add-title"]');
+    await expect(quickAdd).toBeEnabled();
+    await quickAdd.fill(monthGoal);
+    await quickAdd.press('Enter');
+    await expect(page.locator(`[data-testid="item-row"]:has-text("${monthGoal}")`)).toBeVisible();
+
+    // 2. Go to Year view for 2032
+    await page.goto('/year?year=2032');
+    await expect(page).toHaveURL(/year=2032/);
+
+    // 3. Find the May constituent month card
+    const mayCard = page.locator('a[href*="month=2032-05"]');
+    await expect(mayCard).toBeVisible();
+    await expect(mayCard).toContainText(monthGoal);
+    await expect(mayCard).toContainText('0%');
+  });
 });

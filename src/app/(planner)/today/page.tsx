@@ -5,6 +5,7 @@ import { QuickAdd } from '@/components/planner/quick-add';
 import { ItemTree } from '@/components/planner/item-tree';
 import { AreaFilter } from '@/components/planner/area-filter';
 import { Calendar, Sun, Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   buildTree,
   projectTreeForView,
@@ -16,7 +17,9 @@ import {
   getMonthBoundaries,
   getYearBoundaries,
 } from '@/domain/calendar';
-import type { ItemRow as ItemRowType, AreaRow, WeekDay } from '@/types/domain';
+import type { ItemRow as ItemRowType, AreaRow, WeekDay, ItemNode } from '@/types/domain';
+
+export const dynamic = 'force-dynamic';
 
 interface TodayPageProps {
   searchParams: Promise<{ area?: string }>;
@@ -83,7 +86,35 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
     anytimeTree = filterTreeByArea(anytimeTree, activeAreaId);
   }
 
-  // 4. Relevant current Week, Month, and Year context items (T078)
+  // Calculate compact completion summary for Today's Day items
+  function collectDayItems(nodes: ItemNode[]): ItemNode[] {
+    const list: ItemNode[] = [];
+    for (const node of nodes) {
+      if (!(node as any).isContextRow) {
+        list.push(node);
+      }
+      if (node.children && node.children.length > 0) {
+        list.push(...collectDayItems(node.children));
+      }
+    }
+    return list;
+  }
+
+  const activeTodayNodes = [...timedTree, ...anytimeTree];
+  const allTodayDayItems = collectDayItems(activeTodayNodes);
+  const totalTodayCount = allTodayDayItems.length;
+  const completedTodayCount = allTodayDayItems.filter((i) => i.status === 'complete').length;
+  const todayProgressPercent =
+    totalTodayCount > 0
+      ? Math.round(
+          allTodayDayItems.reduce(
+            (acc, i) => acc + (i.progress ?? (i.status === 'complete' ? 100 : 0)),
+            0
+          ) / totalTodayCount
+        )
+      : 0;
+
+  // 4. Relevant current Week, Month, and Year context items (search full hierarchy + Area filtered)
   const { start: weekStart, end: weekEnd } = getWeekBoundaries(todayDateStr, firstDayOfWeek);
   const now = new Date();
   const { start: monthStart, end: monthEnd } = getMonthBoundaries(
@@ -92,24 +123,33 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
   );
   const { start: yearStart, end: yearEnd } = getYearBoundaries(now.getFullYear());
 
-  const currentWeekItems = fullTree.filter(
+  let currentWeekItems = projectTreeForView(
+    fullTree,
     (i) =>
       i.horizon === 'week' &&
       i.period_start === weekStart &&
       i.period_end === weekEnd
   );
-  const currentMonthItems = fullTree.filter(
+  let currentMonthItems = projectTreeForView(
+    fullTree,
     (i) =>
       i.horizon === 'month' &&
       i.period_start === monthStart &&
       i.period_end === monthEnd
   );
-  const currentYearItems = fullTree.filter(
+  let currentYearItems = projectTreeForView(
+    fullTree,
     (i) =>
       i.horizon === 'year' &&
       i.period_start === yearStart &&
       i.period_end === yearEnd
   );
+
+  if (activeAreaId) {
+    currentWeekItems = filterTreeByArea(currentWeekItems, activeAreaId);
+    currentMonthItems = filterTreeByArea(currentMonthItems, activeAreaId);
+    currentYearItems = filterTreeByArea(currentYearItems, activeAreaId);
+  }
 
   const todayFormatted = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -126,9 +166,20 @@ export default async function TodayPage({ searchParams }: TodayPageProps) {
             <Sun className="h-5 w-5 text-amber-500" />
             <span>Today</span>
           </h1>
-          <p className="text-xs text-mutedText-light dark:text-mutedText-dark">
-            {todayFormatted}
-          </p>
+          <div className="flex items-center gap-2 text-xs text-mutedText-light dark:text-mutedText-dark">
+            <span>{todayFormatted}</span>
+            {totalTodayCount > 0 && (
+              <>
+                <span>&bull;</span>
+                <span
+                  data-testid="today-completion-summary"
+                  className="font-medium text-primaryText-light dark:text-primaryText-dark"
+                >
+                  {completedTodayCount} of {totalTodayCount} completed ({todayProgressPercent}%)
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Area Filter Control */}

@@ -79,4 +79,40 @@ test.describe('Unlimited Hierarchy & Context Inheritance (US3)', () => {
     await expect(drawer.locator('select').first()).toHaveValue('inbox');
     await page.click('[data-testid="detail-close-btn"]');
   });
+
+  test('Quick Add with selected parent obeys child invariants (inherits Area)', async ({ page }) => {
+    // 1. Create an Area
+    await page.goto('/settings');
+    const areaName = `QuickParentArea ${Date.now()}`;
+    await page.fill('[data-testid="new-area-name-input"]', areaName);
+    await page.locator('[data-testid="color-picker-steel-blue"]').click();
+    await page.click('[data-testid="add-area-btn"]');
+    await expect(page.locator(`[data-testid="area-row"]:has-text("${areaName}")`)).toBeVisible();
+
+    // 2. Go to Today and create a Parent task in that Area
+    await page.goto('/today');
+    const parentTitle = `QA Parent ${Date.now()}`;
+    await page.fill('[data-testid="quick-add-title"]', parentTitle);
+    await page.click('[data-testid="quick-add-options-toggle"]');
+    await page.selectOption('[data-testid="quick-add-area-select"]', { label: areaName });
+    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+
+    const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
+    await expect(parentRow).toBeVisible();
+
+    // 3. Create child via Quick Add selecting the parent in the options
+    const childTitle = `QA Child ${Date.now()}`;
+    await page.fill('[data-testid="quick-add-title"]', childTitle);
+    await page.click('[data-testid="quick-add-options-toggle"]');
+    await page.selectOption('[data-testid="quick-add-parent-select"]', { label: parentTitle });
+    await page.locator('[data-testid="quick-add-title"]').press('Enter');
+
+    // 4. Reveal child by expanding parent and verify child inherits the parent Area
+    const chevron = parentRow.locator('[data-testid="disclosure-chevron"]');
+    await expect(chevron).toBeVisible();
+    await chevron.click();
+    const childRow = page.locator(`[data-testid="item-row"]:has-text("${childTitle}")`);
+    await expect(childRow).toBeVisible();
+    await expect(childRow).toContainText(areaName);
+  });
 });

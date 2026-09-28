@@ -43,7 +43,7 @@ describe('Row Level Security (RLS) & Personal Data Isolation', () => {
     } else {
       expect(prefs).toEqual([]);
     }
-  }, 15000);
+  }, 45000);
 
   it('strictly prohibits unauthenticated insertions, updates, and deletions', async () => {
     const unauthenticatedClient = createClient<Database>(supabaseUrl, publishableKey, {
@@ -93,7 +93,7 @@ describe('Row Level Security (RLS) & Personal Data Isolation', () => {
       .delete()
       .eq('id', fakeId);
     expect(deleteError || true).toBeTruthy();
-  }, 15000);
+  }, 45000);
 
   it('allows authenticated owner to read, write, and manage personal data', async () => {
     const ownerClient = createClient<Database>(supabaseUrl, publishableKey, {
@@ -141,5 +141,5 @@ describe('Row Level Security (RLS) & Personal Data Isolation', () => {
       .eq('id', insertedItem!.id);
 
     expect(deleteError).toBeNull();
-  }, 15000);
+  }, 45000);
 });

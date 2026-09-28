@@ -5,8 +5,12 @@ import { revalidatePath } from 'next/cache';
 import { wouldCreateCycle, determineChildScheduling, getDescendants } from '@/domain/hierarchy';
 import type { Horizon, ItemStatus } from '@/types/domain';
 
-function revalidatePlanner() {
-  revalidatePath('/(planner)', 'layout');
+function revalidatePlanner(horizon?: Horizon | string) {
+  revalidatePath('/today');
+  if (horizon === 'week') revalidatePath('/week');
+  else if (horizon === 'month') revalidatePath('/month');
+  else if (horizon === 'year') revalidatePath('/year');
+  else if (horizon === 'inbox') revalidatePath('/inbox');
 }
 
 export async function getAuthenticatedUserId(): Promise<string> {
@@ -36,19 +40,45 @@ export async function createItem(input: {
     return { error: 'Item title is required.' };
   }
 
-  const horizon = input.horizon || 'inbox';
-  const periodStart = horizon === 'inbox' ? null : input.periodStart || null;
-  const periodEnd =
+  const supabase = await createClient();
+
+  let horizon: Horizon = input.horizon || 'inbox';
+  let periodStart: string | null = horizon === 'inbox' ? null : input.periodStart || null;
+  let periodEnd: string | null =
     horizon === 'inbox'
       ? null
       : horizon === 'day'
       ? periodStart
       : input.periodEnd || periodStart;
-  const time = horizon === 'day' && input.time ? input.time : null;
+  let time: string | null = horizon === 'day' && input.time ? input.time : null;
+  let areaId: string | null = input.areaId || null;
 
-  const supabase = await createClient();
+  // When parentId is provided, enforce child invariants:
+  // - Verify parent belongs to authenticated owner
+  // - Inherit parent Area
+  // - If parent is Day, inherit that Day/date and optional time
+  // - If parent is Week/Month/Year/Inbox, child defaults to unscheduled Inbox
+  if (input.parentId) {
+    const { data: parent, error: parentError } = await supabase
+      .from('items')
+      .select('*')
+      .eq('id', input.parentId)
+      .eq('user_id', userId)
+      .single();
 
-  // Find max sort_order among siblings
+    if (parentError || !parent) {
+      return { error: 'Parent item not found.' };
+    }
+
+    const childScheduling = determineChildScheduling(parent);
+    horizon = childScheduling.horizon;
+    periodStart = childScheduling.period_start;
+    periodEnd = childScheduling.period_end;
+    time = horizon === 'day' && input.time ? input.time : childScheduling.time;
+    areaId = parent.area_id ?? input.areaId ?? null;
+  }
+
+  // Find max sort_order among existing items
   const { data: existingItems } = await supabase
     .from('items')
     .select('sort_order')
@@ -56,7 +86,7 @@ export async function createItem(input: {
     .order('sort_order', { ascending: false })
     .limit(1);
 
-  const nextSortOrder = existingItems && existingItems.length > 0 ? (existingItems[0].sort_order + 1) : 0;
+  const nextSortOrder = existingItems && existingItems.length > 0 ? existingItems[0].sort_order + 1 : 0;
 
   const { data, error } = await supabase
     .from('items')
@@ -68,7 +98,7 @@ export async function createItem(input: {
       period_start: periodStart,
       period_end: periodEnd,
       time,
-      area_id: input.areaId || null,
+      area_id: areaId,
       sort_order: nextSortOrder,
       status: 'incomplete',
       weight: 1.0,
@@ -94,6 +124,44 @@ export async function toggleItemCompletion(itemId: string, currentStatus: ItemSt
   const nextStatus: ItemStatus = isCurrentlyComplete ? 'incomplete' : 'complete';
   const completedAt = isCurrentlyComplete ? null : new Date().toISOString();
 
+  // Completion Backdoor Prevention:
+  // Marking a parent with incomplete descendants directly complete must route through the 3-option completion dialog
+  if (nextStatus === 'complete') {
+    const { data: directChildren, error: childCheckError } = await supabase
+      .from('items')
+      .select('id')
+      .eq('parent_id', itemId)
+      .eq('user_id', userId)
+      .limit(1);
+
+    if (childCheckError) {
+      return { error: childCheckError.message };
+    }
+
+    if (directChildren && directChildren.length > 0) {
+      const { data: allUserItems, error: fetchError } = await supabase
+        .from('items')
+        .select('id, parent_id, status')
+        .eq('user_id', userId);
+
+      if (fetchError) {
+        return { error: fetchError.message };
+      }
+
+      if (allUserItems) {
+        const descendants = getDescendants(allUserItems as any, itemId);
+        const hasIncomplete = descendants.some(
+          (d) => d.status !== 'complete' && d.status !== 'cancelled'
+        );
+        if (hasIncomplete) {
+          return {
+            error: 'Cannot mark parent complete directly while subtasks remain incomplete. Please use the completion prompt.',
+          };
+        }
+      }
+    }
+  }
+
   const { error } = await supabase
     .from('items')
     .update({
@@ -114,67 +182,15 @@ export async function toggleItemCompletion(itemId: string, currentStatus: ItemSt
 }
 
 export async function createChildItem(parentId: string, title: string) {
-  const userId = await getAuthenticatedUserId();
   const trimmedTitle = title.trim();
-
   if (!trimmedTitle) {
     return { error: 'Subtask title is required.' };
   }
 
-  const supabase = await createClient();
-
-  // Fetch parent to verify ownership and inherit context
-  const { data: parent, error: parentError } = await supabase
-    .from('items')
-    .select('*')
-    .eq('id', parentId)
-    .eq('user_id', userId)
-    .single();
-
-  if (parentError || !parent) {
-    return { error: 'Parent item not found.' };
-  }
-
-  // Inherit context using domain rules: Area is inherited; ONLY Day parent gives Day horizon & date
-  const childScheduling = determineChildScheduling(parent);
-
-  // Find max sort_order among siblings of this parent
-  const { data: siblings } = await supabase
-    .from('items')
-    .select('sort_order')
-    .eq('user_id', userId)
-    .eq('parent_id', parentId)
-    .order('sort_order', { ascending: false })
-    .limit(1);
-
-  const nextSortOrder = siblings && siblings.length > 0 ? siblings[0].sort_order + 1 : 0;
-
-  const { data: newChild, error: insertError } = await supabase
-    .from('items')
-    .insert({
-      user_id: userId,
-      parent_id: parentId,
-      title: trimmedTitle,
-      horizon: childScheduling.horizon,
-      period_start: childScheduling.period_start,
-      period_end: childScheduling.period_end,
-      time: childScheduling.time,
-      area_id: childScheduling.area_id,
-      sort_order: nextSortOrder,
-      status: 'incomplete',
-      weight: 1.0,
-      is_manually_completed: false,
-    })
-    .select()
-    .single();
-
-  if (insertError) {
-    return { error: insertError.message };
-  }
-
-  revalidatePlanner();
-
-  return { success: true, item: newChild };
+  return createItem({
+    parentId,
+    title: trimmedTitle,
+  });
 }
 
 export async function resolveParentCompletion(
@@ -199,7 +215,7 @@ export async function resolveParentCompletion(
     if (error) return { error: error.message };
   } else if (mode === 'all_descendants') {
     // 1. Complete the parent
-    await supabase
+    const { error: parentError } = await supabase
       .from('items')
       .update({
         status: 'complete',
@@ -209,11 +225,15 @@ export async function resolveParentCompletion(
       .eq('id', parentId)
       .eq('user_id', userId);
 
+    if (parentError) return { error: parentError.message };
+
     // 2. Fetch all user items to compute recursive descendants
-    const { data: allItems } = await supabase
+    const { data: allItems, error: itemsError } = await supabase
       .from('items')
       .select('id, parent_id')
       .eq('user_id', userId);
+
+    if (itemsError) return { error: itemsError.message };
 
     if (allItems) {
       // Find all recursive descendants of parentId
@@ -236,7 +256,7 @@ export async function resolveParentCompletion(
       }
 
       if (descendantIds.length > 0) {
-        await supabase
+        const { error: descError } = await supabase
           .from('items')
           .update({
             status: 'complete',
@@ -245,6 +265,8 @@ export async function resolveParentCompletion(
           })
           .in('id', descendantIds)
           .eq('user_id', userId);
+
+        if (descError) return { error: descError.message };
       }
     }
   }
@@ -511,11 +533,15 @@ export async function reorderItems(reorderedItems: { id: string; sort_order: num
   const supabase = await createClient();
 
   for (const item of reorderedItems) {
-    await supabase
+    const { error } = await supabase
       .from('items')
       .update({ sort_order: item.sort_order })
       .eq('id', item.id)
       .eq('user_id', userId);
+
+    if (error) {
+      return { error: error.message };
+    }
   }
 
   revalidatePlanner();

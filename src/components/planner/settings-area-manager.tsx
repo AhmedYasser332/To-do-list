@@ -6,7 +6,8 @@ import { createArea, updateArea, deleteArea } from '@/app/(planner)/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Trash2, Edit2, Check, X } from 'lucide-react';
-import { AREA_PALETTE, getAreaColor } from '@/domain/areas';
+import { AREA_PALETTE, AREA_ICONS, getAreaColor } from '@/domain/areas';
+import { AreaIcon } from './area-icon';
 import { cn } from '@/lib/utils';
 import type { AreaRow } from '@/types/domain';
 
@@ -15,13 +16,20 @@ interface SettingsAreaManagerProps {
 }
 
 export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) {
+  const [areas, setAreas] = useState<AreaRow[]>(initialAreas);
   const [newAreaName, setNewAreaName] = useState('');
   const [newAreaColor, setNewAreaColor] = useState<string>('steel-blue');
+  const [newAreaIcon, setNewAreaIcon] = useState<string>('folder');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [editingColor, setEditingColor] = useState<string>('steel-blue');
+  const [editingIcon, setEditingIcon] = useState<string>('folder');
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  React.useEffect(() => {
+    setAreas(initialAreas);
+  }, [initialAreas]);
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,11 +37,15 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
 
     setError(null);
     startTransition(async () => {
-      const res = await createArea(newAreaName.trim(), 'folder', newAreaColor);
+      const res = await createArea(newAreaName.trim(), newAreaIcon, newAreaColor);
       if (res?.error) {
         setError(res.error);
       } else {
+        if (res?.area) {
+          setAreas((prev) => [...prev, res.area]);
+        }
         setNewAreaName('');
+        setNewAreaIcon('folder');
       }
     });
   };
@@ -42,6 +54,7 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
     setEditingId(area.id);
     setEditingName(area.name);
     setEditingColor(area.color_token || 'steel-blue');
+    setEditingIcon(area.icon || 'folder');
   };
 
   const handleSaveEdit = (areaId: string) => {
@@ -49,10 +62,17 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
 
     setError(null);
     startTransition(async () => {
-      const res = await updateArea(areaId, editingName.trim(), 'folder', editingColor);
+      const res = await updateArea(areaId, editingName.trim(), editingIcon, editingColor);
       if (res?.error) {
         setError(res.error);
       } else {
+        setAreas((prev) =>
+          prev.map((a) =>
+            a.id === areaId
+              ? { ...a, name: editingName.trim(), icon: editingIcon, color_token: editingColor }
+              : a
+          )
+        );
         setEditingId(null);
       }
     });
@@ -62,10 +82,12 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
     if (isPending) return;
 
     setError(null);
+    setAreas((prev) => prev.filter((a) => a.id !== areaId));
     startTransition(async () => {
       const res = await deleteArea(areaId);
       if (res?.error) {
         setError(res.error);
+        setAreas(initialAreas);
       }
     });
   };
@@ -118,6 +140,30 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
             );
           })}
         </div>
+
+        {/* Icon Picker for New Area */}
+        <div className="flex items-center gap-1.5 pt-0.5">
+          <span className="text-[11px] text-mutedText-light dark:text-mutedText-dark mr-1">Icon:</span>
+          {AREA_ICONS.map((iconChoice) => {
+            const isSelected = newAreaIcon === iconChoice.id;
+            return (
+              <button
+                key={iconChoice.id}
+                type="button"
+                data-testid={`icon-picker-${iconChoice.id}`}
+                onClick={() => setNewAreaIcon(iconChoice.id)}
+                title={iconChoice.name}
+                aria-label={iconChoice.name}
+                className={cn(
+                  'p-1 rounded text-mutedText-light dark:text-mutedText-dark hover:text-primaryText-light dark:hover:text-primaryText-dark transition-colors cursor-pointer',
+                  isSelected && 'bg-accent/15 text-accent dark:text-accent ring-1 ring-accent'
+                )}
+              >
+                <AreaIcon icon={iconChoice.id} className="h-3.5 w-3.5" />
+              </button>
+            );
+          })}
+        </div>
       </form>
 
       {error && (
@@ -126,12 +172,12 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
 
       {/* Areas List */}
       <div className="divide-y divide-border-light/40 dark:divide-border-dark/40 border border-border-light dark:border-border-dark rounded">
-        {initialAreas.length === 0 ? (
+        {areas.length === 0 ? (
           <p className="p-3 text-xs text-mutedText-light/70 dark:text-mutedText-dark/70 italic text-center">
             No areas configured yet. Create one above to organize your planner.
           </p>
         ) : (
-          initialAreas.map((area) => {
+          areas.map((area) => {
             const isEditing = editingId === area.id;
             const areaColorHex = getAreaColor(area.color_token);
 
@@ -195,6 +241,30 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                         );
                       })}
                     </div>
+
+                    {/* Icon selector in edit mode */}
+                    <div className="flex items-center gap-1.5 pl-1">
+                      <span className="text-[10px] text-mutedText-light dark:text-mutedText-dark">Icon:</span>
+                      {AREA_ICONS.map((iconChoice) => {
+                        const isSelected = editingIcon === iconChoice.id;
+                        return (
+                          <button
+                            key={iconChoice.id}
+                            type="button"
+                            data-testid={`edit-icon-picker-${iconChoice.id}`}
+                            onClick={() => setEditingIcon(iconChoice.id)}
+                            title={iconChoice.name}
+                            aria-label={iconChoice.name}
+                            className={cn(
+                              'p-0.5 rounded text-mutedText-light dark:text-mutedText-dark hover:text-primaryText-light dark:hover:text-primaryText-dark transition-colors cursor-pointer',
+                              isSelected && 'bg-accent/15 text-accent dark:text-accent ring-1 ring-accent'
+                            )}
+                          >
+                            <AreaIcon icon={iconChoice.id} className="h-3 w-3" />
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -202,6 +272,9 @@ export function SettingsAreaManager({ initialAreas }: SettingsAreaManagerProps) 
                       className="h-2 w-2 rounded-full shrink-0"
                       style={{ backgroundColor: areaColorHex }}
                     />
+                    <span style={{ color: areaColorHex }}>
+                      <AreaIcon icon={area.icon} className="h-3.5 w-3.5 shrink-0" />
+                    </span>
                     <span className="text-xs font-medium text-primaryText-light dark:text-primaryText-dark">
                       {area.name}
                     </span>

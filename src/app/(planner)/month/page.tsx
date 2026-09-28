@@ -110,10 +110,13 @@ export default async function MonthPage({ searchParams }: MonthPageProps) {
     const { start: wStart, end: wEnd } = getWeekBoundaries(currentCursor, firstDayOfWeek);
     if (!seenWeeks.has(wStart)) {
       seenWeeks.add(wStart);
-      const weekNodes = projectTreeForView(
+      let weekNodes = projectTreeForView(
         fullTree,
         (i) => i.horizon === 'week' && i.period_start === wStart && i.period_end === wEnd
       );
+      if (activeAreaId) {
+        weekNodes = filterTreeByArea(weekNodes, activeAreaId);
+      }
       constituentWeeks.push({
         weekStart: wStart,
         weekEnd: wEnd,
@@ -137,7 +140,7 @@ export default async function MonthPage({ searchParams }: MonthPageProps) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center rounded border border-border-light bg-surface-light shadow-sm dark:border-border-dark dark:bg-surface-dark">
             <Link
               href={`/month?month=${prevMonthStr}${activeAreaId ? `&area=${activeAreaId}` : ''}`}
