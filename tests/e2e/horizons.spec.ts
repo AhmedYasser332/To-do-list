@@ -82,9 +82,26 @@ test.describe('Horizons Navigation & Period Quick Add (US7)', () => {
   });
 
   test('Year view exposes Month Item tree progress in constituent month card', async ({ page }) => {
-    // 1. Go to Month view for an isolated period and create a monthly outcome
-    await page.goto('/month?month=2032-05');
-    await expect(page).toHaveURL(/month=2032-05/);
+    // 1. Go to Month view for an isolated period and clean any Month Items
+    // left there by previous runs, so the year card shows only this run's item
+    const staleRows = page.locator('[data-testid="item-row"]');
+    for (let i = 0; i < 10; i++) {
+      // Fresh server-rendered pass each loop avoids racing the post-delete refresh
+      await page.goto('/month?month=2032-05');
+      await expect(page).toHaveURL(/month=2032-05/);
+      if ((await staleRows.count()) === 0) break;
+      await staleRows.first().click();
+      const drawer = page.locator('[data-testid="item-detail-drawer"]');
+      await expect(drawer).toBeVisible();
+      await page.locator('[data-testid="detail-delete-btn"]').click();
+      const confirmBtn = page.locator('[data-testid="confirm-delete-btn"]');
+      if (await confirmBtn.isVisible().catch(() => false)) {
+        await confirmBtn.click();
+      }
+      await expect(drawer).not.toBeVisible();
+    }
+
+    // 2. Create a monthly outcome
     const monthGoal = `May Goal ${Date.now()}`;
     const quickAdd = page.locator('[data-testid="quick-add-title"]');
     await expect(quickAdd).toBeEnabled();
@@ -92,11 +109,11 @@ test.describe('Horizons Navigation & Period Quick Add (US7)', () => {
     await quickAdd.press('Enter');
     await expect(page.locator(`[data-testid="item-row"]:has-text("${monthGoal}")`)).toBeVisible();
 
-    // 2. Go to Year view for 2032
+    // 3. Go to Year view for 2032
     await page.goto('/year?year=2032');
     await expect(page).toHaveURL(/year=2032/);
 
-    // 3. Find the May constituent month card
+    // 4. Find the May constituent month card
     const mayCard = page.locator('a[href*="month=2032-05"]');
     await expect(mayCard).toBeVisible();
     await expect(mayCard).toContainText(monthGoal);

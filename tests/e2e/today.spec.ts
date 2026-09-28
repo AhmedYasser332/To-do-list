@@ -89,4 +89,69 @@ test.describe('Today View & Quick Add Flow (US1)', () => {
     await expect(summary).toBeVisible();
     await expect(summary).toContainText('completed');
   });
+
+  test('Planning Context finds nested horizon items and respects Area filter', async ({ page }) => {
+    const stamp = Date.now();
+    const areaA = `Ctx Area A ${stamp}`;
+    const areaB = `Ctx Area B ${stamp}`;
+    const parentTitle = `Ctx Parent ${stamp}`;
+    const weekChild = `Nested Week Task ${stamp}`;
+
+    // Provision two Areas
+    await page.goto('/settings');
+    await expect(page).toHaveURL(/\/settings/);
+    for (const name of [areaA, areaB]) {
+      await page.fill('[data-testid="new-area-name-input"]', name);
+      await page.locator('[data-testid="add-area-btn"]').click();
+      await expect(page.locator(`[data-testid="area-row"]:has-text("${name}")`)).toBeVisible();
+    }
+
+    // Create a Day parent tagged with Area A
+    await page.goto('/today');
+    await page.click('[data-testid="quick-add-options-toggle"]');
+    await page.selectOption('[data-testid="quick-add-area-select"]', { label: areaA });
+    const quickAddInput = page.locator('[data-testid="quick-add-title"]');
+    await expect(quickAddInput).toBeEnabled();
+    await quickAddInput.fill(parentTitle);
+    const submitBtn = page.locator('[data-testid="quick-add-submit-btn"]');
+    await expect(submitBtn).toBeEnabled();
+    await submitBtn.click();
+
+    const parentRow = page.locator(`[data-testid="item-row"]:has-text("${parentTitle}")`);
+    await expect(parentRow).toBeVisible();
+
+    // Add a subtask (inherits Area A and Day context)
+    await parentRow.hover();
+    await parentRow.locator('[data-testid="add-subtask-btn"]').click();
+    const childInput = page.locator('[data-testid="inline-child-input"]');
+    await expect(childInput).toBeVisible();
+    await childInput.fill(weekChild);
+    await childInput.press('Enter');
+    const childRow = page.locator(`[data-testid="item-row"]:has-text("${weekChild}")`);
+    await expect(childRow).toBeVisible();
+
+    // Repoint the subtask at the Week horizon via the details drawer;
+    // scheduling resolves to the current week while it stays nested under the Day parent
+    await childRow.click();
+    const drawer = page.locator('[data-testid="item-detail-drawer"]');
+    await expect(drawer).toBeVisible();
+    await drawer.locator('select').first().selectOption('week');
+    await page.click('[data-testid="detail-save-btn"]');
+    await page.click('[data-testid="detail-close-btn"]');
+    await expect(drawer).not.toBeVisible();
+
+    // Today's Planning Context searches the full hierarchy:
+    // a Week item nested under a Day parent still counts toward This Week
+    await expect(page.getByText(/This Week \([1-9]\d*\)/)).toBeVisible();
+
+    // Matching Area keeps the context entry
+    await page.selectOption('[data-testid="area-filter-select"]', { label: areaA });
+    await expect(page.getByText(/This Week \([1-9]\d*\)/)).toBeVisible();
+
+    // Non-matching Area removes the whole subtree from Today
+    await page.locator('[data-testid="clear-area-filter"]').click();
+    await page.selectOption('[data-testid="area-filter-select"]', { label: areaB });
+    await expect(page.getByText(weekChild)).toHaveCount(0);
+    await expect(page.getByText(parentTitle)).toHaveCount(0);
+  });
 });
